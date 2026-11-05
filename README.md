@@ -1,6 +1,6 @@
 # Lab
 
-Small, free tools that turn your own data into something worth sharing. Fifteen of them, plus five skills for the same ideas inside an AI tool. Everything runs in the browser, nothing is uploaded, and each tool is one file with no dependencies.
+Small, free tools that turn your own data into something worth sharing. Sixteen of them, plus five skills for the same ideas inside an AI tool. Everything runs in the browser, nothing is uploaded, and each tool is one file with no dependencies.
 
 Open `index.html` for the hub, or turn on GitHub Pages (main branch, root) and share the link.
 
@@ -18,6 +18,7 @@ Open `index.html` for the hub, or turn on GitHub Pages (main branch, root) and s
 | `listening-receipt` | Spotify hours, top artists, top tracks, late-night share | Spotify extended streaming history .json |
 | `shelf-receipt` | Your Goodreads or Letterboxd year as a receipt | Goodreads library export or Letterboxd diary.csv |
 | `fitness-wrapped` | Your year of movement as a card | Strava activities.csv or Apple Health export.xml |
+| `linkedin-wrapped` | Your LinkedIn year as a card, totals only | LinkedIn data export CSVs |
 | `chat-awards` | WhatsApp group chat awards: the Chatterbox, the Ghost, the Night Owl | WhatsApp chat export .txt |
 | `buzzword-decoder` | Daily five-question corporate speak game with an emoji result | Nothing |
 | `daily-guess` | Three "what year" and two "how far" guesses a day, emoji grid | Nothing |

@@ -1,0 +1,89 @@
+<!-- title: LinkedIn Wrapped | Your LinkedIn year as a shareable card, from your own data export. -->
+<h1>LinkedIn Wrapped</h1>
+<p class="sub">Your LinkedIn year as a card: new connections, posts, reactions and comments. Built from your own data export, in your browser. The card shows totals only, never anyone's name.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose LinkedIn export files"><strong>Drop Connections.csv (plus Shares, Reactions, Comments if you have them)</strong><span>LinkedIn: Settings, Data privacy, Get a copy of your data. Pick Connections and your posts, then select the CSV files. Or click to choose.</span><input id="file" type="file" accept=".csv" multiple hidden></div>
+<div class="btns"><button id="sample">Try with sample data</button></div><div class="err" id="err" role="alert"></div>
+<label for="year">Year</label><select id="year"></select>
+<div class="chk"><input id="hide" type="checkbox" checked><label for="hide">Leave company names off the card</label></div>
+<p class="note" id="have"></p>
+<p class="note">Files are recognised by their column names, so rename nothing. Only counts and the most common company and role words are used.</p>
+</section>
+<section><div class="preview" id="out">Your card appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var D={conn:[],shares:[],react:[],comm:[]},canvas=null,txt='';
+var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var ROLES=['Founder','CEO','Co-Founder','Engineer','Developer','Manager','Director','VP','Head of','Sales','Customer Success','Marketing','Product','Recruiter','Consultant','Designer','Analyst','Account','Operations','Partner'];
+function table(t){
+  var r=parseCSV(t),hi=-1;
+  for(var i=0;i<Math.min(r.length,12);i++){var h=r[i].map(function(x){return x.trim().toLowerCase()});
+    if(h.indexOf('connected on')>=0||h.indexOf('sharecommentary')>=0||(h.indexOf('date')>=0&&(h.indexOf('type')>=0||h.indexOf('message')>=0)&&h.indexOf('link')>=0)){hi=i;break}}
+  if(hi<0) return null;
+  var h=r[hi].map(function(x){return x.trim().toLowerCase()});
+  return {h:h,rows:r.slice(hi+1).filter(function(x){return x.length>1})};
+}
+function col(T,n){return T.h.indexOf(n)}
+function ingest(text){
+  var T=table(text);if(!T) return 'skip';
+  if(col(T,'connected on')>=0){var ic=col(T,'company'),ip=col(T,'position'),io=col(T,'connected on');
+    T.rows.forEach(function(x){var d=new Date(x[io]);if(!isNaN(d)) D.conn.push({d:d,c:(ic>=0?x[ic]:'')||'',p:(ip>=0?x[ip]:'')||''})});return 'connections'}
+  var id=col(T,'date');
+  function dt(s){var d=new Date(String(s||'').replace(' ','T')+(/Z|[+-]\d\d:?\d\d$/.test(s||'')?'':'Z'));return d}
+  if(col(T,'sharecommentary')>=0){T.rows.forEach(function(x){var d=dt(x[id]);if(!isNaN(d)) D.shares.push({d:d})});return 'posts'}
+  if(col(T,'type')>=0){T.rows.forEach(function(x){var d=dt(x[id]);if(!isNaN(d)) D.react.push({d:d})});return 'reactions'}
+  if(col(T,'message')>=0){T.rows.forEach(function(x){var d=dt(x[id]);if(!isNaN(d)) D.comm.push({d:d})});return 'comments'}
+  return 'skip';
+}
+async function load(files){
+  UI.err('');D={conn:[],shares:[],react:[],comm:[]};var seen=[];
+  try{for(var i=0;i<files.length;i++){var k=ingest(await files[i].text());if(k!=='skip') seen.push(k)}}catch(e){UI.err('Could not read those files.');return}
+  finish(seen);
+}
+function finish(seen){
+  if(!D.conn.length&&!D.shares.length&&!D.react.length&&!D.comm.length){UI.err('No LinkedIn export files recognised. Expected Connections.csv, Shares.csv, Reactions.csv or Comments.csv.');return}
+  $('have').textContent='Found: '+seen.join(', ')+'.';
+  var ys={};['conn','shares','react','comm'].forEach(function(k){D[k].forEach(function(x){ys[x.d.getFullYear()]=1})});
+  var s=$('year');s.textContent='';Object.keys(ys).sort().reverse().forEach(function(y){var o=document.createElement('option');o.value=y;o.textContent=y;s.appendChild(o)});
+  run();
+}
+function topN(o,n){return Object.keys(o).sort(function(a,b){return o[b]-o[a]}).slice(0,n)}
+function inYear(a,y){return a.filter(function(x){return x.d.getFullYear()===y})}
+function run(){
+  var y=+$('year').value;if(!y) return;
+  var nc=inYear(D.conn,y),posts=inYear(D.shares,y).length,rx=inYear(D.react,y).length,cm=inYear(D.comm,y).length;
+  var net=D.conn.filter(function(x){return x.d.getFullYear()<=y}).length,mo={},co={},ro={};
+  nc.forEach(function(x){mo[x.d.getMonth()]=(mo[x.d.getMonth()]||0)+1;var c=x.c.trim();if(c) co[c]=(co[c]||0)+1;
+    ROLES.forEach(function(r){if(x.p.toLowerCase().indexOf(r.toLowerCase())>=0) ro[r]=(ro[r]||0)+1})});
+  var bm=topN(mo,1)[0],tc=topN(co,1)[0],tr=topN(ro,1)[0],hide=$('hide').checked;
+  var sub=net?'Your network now stands at '+net.toLocaleString('en-US')+'.':'A year of showing up.';
+  if(tr) sub+=' Most new connections are in '+tr+' roles.';
+  if(tc&&!hide) sub+=' Top company: '+tc+'.';
+  var head=D.conn.length?nc.length.toLocaleString('en-US')+(nc.length===1?' new connection in ':' new connections in ')+y+'.':(posts+rx+cm).toLocaleString('en-US')+' moves on LinkedIn in '+y+'.';
+  canvas=Card.poster({kicker:'LinkedIn Wrapped  |  '+y,headline:head,sub:sub,
+    stats:[{v:D.shares.length?posts.toLocaleString('en-US'):'n/a',l:'Posts'},{v:D.react.length?rx.toLocaleString('en-US'):'n/a',l:'Reactions given'},{v:D.comm.length?cm.toLocaleString('en-US'):'n/a',l:'Comments written'},{v:bm!==undefined?MN[+bm]:'n/a',l:'Busiest month to connect'}],
+    footer:'Made with LinkedIn Wrapped',hue:205});
+  Card.show($('out'),canvas,420);
+  txt='My LinkedIn Wrapped '+y+': '+nc.length+' new connections, '+posts+' posts, '+rx+' reactions, '+cm+' comments.'+(bm!==undefined?' Busiest month: '+MN[+bm]+'.':'');
+  $('png').disabled=$('copy').disabled=false;
+}
+function sample(){
+  var C=['Acme Co','Northwind','Globex','Initech','Umbrella','Hooli'],P=['Customer Success Manager','Founder','Account Executive','Product Manager','Software Engineer','Head of Sales'],y=new Date().getFullYear(),M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],r=mulberry(11);
+  var c=['Notes:','"When exporting your connection data, you may notice that some of the email addresses are missing."','','First Name,Last Name,URL,Email Address,Company,Position,Connected On'];
+  for(var i=0;i<420;i++){var yy=y-(i%5===0?1:0),m=Math.floor(Math.pow(r(),1.3)*Math.min(11,new Date().getMonth())+0);c.push('Pat,Sample,x,,'+C[i%6]+','+P[Math.floor(r()*6)]+','+String(1+i%27).padStart(2,'0')+' '+M[m]+' '+yy)}
+  var s=['Date,ShareLink,ShareCommentary,SharedUrl,MediaUrl,Visibility'],q=['Date,Type,Link'],m2=['Date,Link,Message'];
+  function ts(i){var d=new Date(y,Math.floor(r()*Math.min(11,new Date().getMonth())),1+i%27,9,0,0);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' 09:00:00'}
+  for(i=0;i<46;i++) s.push(ts(i)+',x,"post text",,,MEMBER_NETWORK');
+  for(i=0;i<830;i++) q.push(ts(i)+',LIKE,x');
+  for(i=0;i<190;i++) m2.push(ts(i)+',x,"nice"');
+  return [c.join('\n'),s.join('\n'),q.join('\n'),m2.join('\n')];
+}
+UI.dropzone('drop','file',load,false);
+$('sample').addEventListener('click',function(){D={conn:[],shares:[],react:[],comm:[]};var seen=sample().map(ingest).filter(function(k){return k!=='skip'});finish(seen)});
+['year','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'linkedin-wrapped.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

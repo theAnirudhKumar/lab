@@ -31,6 +31,7 @@ META = {
  'chat-awards': ('Group Chat Awards', 'Drop in a WhatsApp export and hand out the awards: the Chatterbox, the Ghost, the Night Owl and more.', 'A WhatsApp chat export .txt', 'WhatsApp: open the chat, menu, More, Export chat, Without media.', 'Our group chat awards. Who is the Ghost?'),
  'receipt-of-me': ('Receipt of Me', 'A joke receipt of your week, year or relationship. Always marked as not a real receipt.', 'Nothing', 'Pick a template and edit the lines.', 'The receipt of my week.'),
  'daily-guess': ('Daily Guess', 'Five daily guesses, three years and two distances, the same for everyone. Emoji grid to share.', 'Nothing', 'Open it once a day.', 'Daily Guess 11/15. Beat me.'),
+ 'linkedin-wrapped': ('LinkedIn Wrapped', 'Your LinkedIn year as a shareable card: new connections, posts, reactions and comments. Totals only, never names.', 'LinkedIn data export CSVs: Connections.csv and optionally Shares, Reactions, Comments', 'LinkedIn: Settings, Data privacy, Get a copy of your data.', 'I made N new connections on LinkedIn this year. Card inside.'),
 }
 
 def build():

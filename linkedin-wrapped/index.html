@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LinkedIn Wrapped</title><meta name="description" content="Your LinkedIn year as a shareable card, from your own data export.">
+<style>:root{--bg:#f4f1ea;--ink:#1c1b19;--mute:#6f6a60;--card:#fffdf8;--line:#d9d3c5;--accent:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--ink:#ece8de;--mute:#9a9486;--card:#1f1e1b;--line:#37342d;--accent:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 24px;max-width:58ch}
+.grid{display:grid;gap:24px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:minmax(0,1fr) 420px;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;transition:.15s}
+.drop.over,.drop:hover,.drop:focus{border-color:var(--accent);outline:none}
+.drop strong{display:block;font-size:18px}
+.drop span{color:var(--mute);font-size:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input[type=number],input[type=text],input[type=date],input[type=color],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=color]{padding:2px;height:40px}
+input[type=range]{width:100%}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:14px}
+.chk label{margin:0;color:var(--ink)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:9px 14px}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.note{font-size:13px;color:var(--mute);margin-top:14px}
+.err{color:#b91c1c;font-size:14px;margin-top:10px;min-height:1px}
+.preview{min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--mute);text-align:center}
+a{color:var(--accent)}
+.priv{font-size:13px;color:var(--mute);margin-top:28px;border-top:1px solid var(--line);padding-top:14px}
+</style></head>
+<body><main>
+<h1>LinkedIn Wrapped</h1>
+<p class="sub">Your LinkedIn year as a card: new connections, posts, reactions and comments. Built from your own data export, in your browser. The card shows totals only, never anyone's name.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose LinkedIn export files"><strong>Drop Connections.csv (plus Shares, Reactions, Comments if you have them)</strong><span>LinkedIn: Settings, Data privacy, Get a copy of your data. Pick Connections and your posts, then select the CSV files. Or click to choose.</span><input id="file" type="file" accept=".csv" multiple hidden></div>
+<div class="btns"><button id="sample">Try with sample data</button></div><div class="err" id="err" role="alert"></div>
+<label for="year">Year</label><select id="year"></select>
+<div class="chk"><input id="hide" type="checkbox" checked><label for="hide">Leave company names off the card</label></div>
+<p class="note" id="have"></p>
+<p class="note">Files are recognised by their column names, so rename nothing. Only counts and the most common company and role words are used.</p>
+</section>
+<section><div class="preview" id="out">Your card appears here.</div><div class="btns" style="justify-content:center"><button class="primary" id="png" disabled>Download image</button><button id="copy" disabled>Copy text</button></div></section>
+</div>
+<p class="priv">Runs entirely in your browser. Nothing is uploaded and there is no tracking.</p>
+<script>
+var $=function(id){return document.getElementById(id)};
+var DAY=864e5;
+function parseCSV(t){
+  var out=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){var c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c==='"') q=true; else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n') i++; row.push(f);f=''; if(row.length>1||row[0]!=='') out.push(row); row=[] }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row)}
+  return out;
+}
+function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shuffled(a,r){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(r()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+
+var Card=(function(){
+var MONO='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', SANS='system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+function mk(w,h,sc){var c=document.createElement('canvas');c.width=w*sc;c.height=h*sc;var g=c.getContext('2d');g.scale(sc,sc);return {c:c,g:g}}
+function wrapText(g,text,maxW){
+  var words=String(text).split(' '),lines=[],cur='';
+  words.forEach(function(w){var t=cur?cur+' '+w:w; if(g.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t});
+  if(cur) lines.push(cur); return lines;
+}
+/* lines: [{t:'sep'|'c'|'r', l, r, cls:'b big m'}] */
+function receipt(lines){
+  var sc=2,w=440,lh=22,pad=28;
+  var h=pad*2+lines.reduce(function(a,x){return a+(x.t==='sep'?14:(/big/.test(x.cls||'')?30:lh))},0);
+  var m=mk(w,h,sc),g=m.g; g.fillStyle='#fffefa'; g.fillRect(0,0,w,h);
+  var y=pad;
+  lines.forEach(function(x){
+    if(x.t==='sep'){g.strokeStyle='#1c1b19';g.setLineDash([4,3]);g.beginPath();g.moveTo(pad,y+5);g.lineTo(w-pad,y+5);g.stroke();y+=14;return}
+    var big=/big/.test(x.cls||''),bold=/\bb\b/.test(x.cls||''),mute=/\bm\b/.test(x.cls||'');
+    g.font=(bold?'700 ':'400 ')+(big?'20px ':'13px ')+MONO; g.fillStyle=mute?'#6f6a60':'#1c1b19'; y+=big?22:16;
+    if(x.t==='c'){g.textAlign='center';g.fillText(x.l,w/2,y)}
+    else{g.textAlign='left';g.fillText(x.l,pad,y);g.textAlign='right';g.fillText(x.r,w-pad,y)}
+    y+=big?8:6;
+  });
+  return m.c;
+}
+function receiptText(lines){
+  var W=40;
+  return lines.map(function(x){
+    if(x.t==='sep') return '-'.repeat(W);
+    if(x.t==='c'){return ' '.repeat(Math.max(0,Math.floor((W-x.l.length)/2)))+x.l}
+    return x.l+' '.repeat(Math.max(1,W-x.l.length-x.r.length))+x.r;
+  }).join('\n');
+}
+/* o: {kicker, headline, sub, stats:[{v,l}] (max 4), footer, hue} */
+function poster(o){
+  var W=1080,H=1350,m=mk(W,H,1),g=m.g,h=o.hue==null?20:o.hue;
+  var gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,'hsl('+h+',65%,13%)'); gr.addColorStop(1,'hsl('+((h+50)%360)+',70%,30%)');
+  g.fillStyle=gr; g.fillRect(0,0,W,H);
+  g.globalAlpha=.1; g.fillStyle='#fff'; g.beginPath(); g.arc(W-100,170,270,0,7); g.fill(); g.beginPath(); g.arc(60,H-300,210,0,7); g.fill(); g.globalAlpha=1;
+  g.textBaseline='alphabetic'; g.textAlign='left'; g.fillStyle='#fff';
+  g.font='700 30px '+SANS; g.globalAlpha=.8; g.fillText(String(o.kicker||'').toUpperCase(),80,120); g.globalAlpha=1;
+  var size=112,lines;
+  for(;;){g.font='800 '+size+'px '+SANS; lines=wrapText(g,o.headline,W-160); if(lines.length<=4||size<=52) break; size-=6}
+  var y=270; lines.forEach(function(l){g.fillText(l,80,y); y+=size*1.1});
+  if(o.sub){g.font='400 40px '+SANS; g.globalAlpha=.85; y+=14; wrapText(g,o.sub,W-160).slice(0,3).forEach(function(l){g.fillText(l,80,y);y+=52}); g.globalAlpha=1}
+  var st=(o.stats||[]).slice(0,4), bw=(W-160-30)/2, bh=190;
+  st.forEach(function(s,i){
+    var bx=80+(i%2)*(bw+30), by=H-510+Math.floor(i/2)*(bh+24);
+    g.fillStyle='rgba(255,255,255,.12)'; g.beginPath(); if(g.roundRect) g.roundRect(bx,by,bw,bh,24); else g.rect(bx,by,bw,bh); g.fill();
+    g.fillStyle='#fff'; var vs=68; do{g.font='800 '+vs+'px '+SANS; vs-=4}while(g.measureText(String(s.v)).width>bw-48&&vs>28);
+    g.fillText(String(s.v),bx+24,by+98);
+    g.font='400 26px '+SANS; g.globalAlpha=.75; g.fillText(String(s.l).toUpperCase(),bx+24,by+150); g.globalAlpha=1;
+  });
+  g.font='500 28px '+SANS; g.globalAlpha=.7; g.fillStyle='#fff'; g.fillText(o.footer||'',80,H-44); g.globalAlpha=1;
+  return m.c;
+}
+function show(el,canvas,maxW){
+  el.textContent=''; canvas.style.cssText='width:100%;max-width:'+(maxW||440)+'px;height:auto;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.25);display:block;margin:0 auto';
+  el.appendChild(canvas);
+}
+function download(canvas,name){var a=document.createElement('a');a.download=name||'share.png';a.href=canvas.toDataURL('image/png');a.click()}
+function copy(text,btn){
+  var old=btn.textContent;
+  (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(function(){btn.textContent='Copied'},function(){btn.textContent='Copy failed'});
+  setTimeout(function(){btn.textContent=old},1500);
+}
+return {receipt:receipt,receiptText:receiptText,poster:poster,show:show,download:download,copy:copy,wrapText:wrapText,MONO:MONO,SANS:SANS};
+})();
+var UI={
+  dropzone:function(dropId,fileId,cb,asText){
+    var drop=$(dropId),fi=$(fileId);
+    function take(files){if(!files||!files.length) return; if(asText===false){cb(files)} else {var r=new FileReader(); r.onload=function(){cb(String(r.result))}; r.onerror=function(){UI.err('Could not read that file.')}; r.readAsText(files[0])}}
+    drop.addEventListener('click',function(){fi.click()});
+    drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fi.click()}});
+    fi.addEventListener('change',function(){take(fi.files)});
+    ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+    ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+    drop.addEventListener('drop',function(e){take(e.dataTransfer.files)});
+  },
+  err:function(m){var e=$('err'); if(e) e.textContent=m||''},
+  startOfWeek:function(d){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x}
+};
+
+var D={conn:[],shares:[],react:[],comm:[]},canvas=null,txt='';
+var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var ROLES=['Founder','CEO','Co-Founder','Engineer','Developer','Manager','Director','VP','Head of','Sales','Customer Success','Marketing','Product','Recruiter','Consultant','Designer','Analyst','Account','Operations','Partner'];
+function table(t){
+  var r=parseCSV(t),hi=-1;
+  for(var i=0;i<Math.min(r.length,12);i++){var h=r[i].map(function(x){return x.trim().toLowerCase()});
+    if(h.indexOf('connected on')>=0||h.indexOf('sharecommentary')>=0||(h.indexOf('date')>=0&&(h.indexOf('type')>=0||h.indexOf('message')>=0)&&h.indexOf('link')>=0)){hi=i;break}}
+  if(hi<0) return null;
+  var h=r[hi].map(function(x){return x.trim().toLowerCase()});
+  return {h:h,rows:r.slice(hi+1).filter(function(x){return x.length>1})};
+}
+function col(T,n){return T.h.indexOf(n)}
+function ingest(text){
+  var T=table(text);if(!T) return 'skip';
+  if(col(T,'connected on')>=0){var ic=col(T,'company'),ip=col(T,'position'),io=col(T,'connected on');
+    T.rows.forEach(function(x){var d=new Date(x[io]);if(!isNaN(d)) D.conn.push({d:d,c:(ic>=0?x[ic]:'')||'',p:(ip>=0?x[ip]:'')||''})});return 'connections'}
+  var id=col(T,'date');
+  function dt(s){var d=new Date(String(s||'').replace(' ','T')+(/Z|[+-]\d\d:?\d\d$/.test(s||'')?'':'Z'));return d}
+  if(col(T,'sharecommentary')>=0){T.rows.forEach(function(x){var d=dt(x[id]);if(!isNaN(d)) D.shares.push({d:d})});return 'posts'}
+  if(col(T,'type')>=0){T.rows.forEach(function(x){var d=dt(x[id]);if(!isNaN(d)) D.react.push({d:d})});return 'reactions'}
+  if(col(T,'message')>=0){T.rows.forEach(function(x){var d=dt(x[id]);if(!isNaN(d)) D.comm.push({d:d})});return 'comments'}
+  return 'skip';
+}
+async function load(files){
+  UI.err('');D={conn:[],shares:[],react:[],comm:[]};var seen=[];
+  try{for(var i=0;i<files.length;i++){var k=ingest(await files[i].text());if(k!=='skip') seen.push(k)}}catch(e){UI.err('Could not read those files.');return}
+  finish(seen);
+}
+function finish(seen){
+  if(!D.conn.length&&!D.shares.length&&!D.react.length&&!D.comm.length){UI.err('No LinkedIn export files recognised. Expected Connections.csv, Shares.csv, Reactions.csv or Comments.csv.');return}
+  $('have').textContent='Found: '+seen.join(', ')+'.';
+  var ys={};['conn','shares','react','comm'].forEach(function(k){D[k].forEach(function(x){ys[x.d.getFullYear()]=1})});
+  var s=$('year');s.textContent='';Object.keys(ys).sort().reverse().forEach(function(y){var o=document.createElement('option');o.value=y;o.textContent=y;s.appendChild(o)});
+  run();
+}
+function topN(o,n){return Object.keys(o).sort(function(a,b){return o[b]-o[a]}).slice(0,n)}
+function inYear(a,y){return a.filter(function(x){return x.d.getFullYear()===y})}
+function run(){
+  var y=+$('year').value;if(!y) return;
+  var nc=inYear(D.conn,y),posts=inYear(D.shares,y).length,rx=inYear(D.react,y).length,cm=inYear(D.comm,y).length;
+  var net=D.conn.filter(function(x){return x.d.getFullYear()<=y}).length,mo={},co={},ro={};
+  nc.forEach(function(x){mo[x.d.getMonth()]=(mo[x.d.getMonth()]||0)+1;var c=x.c.trim();if(c) co[c]=(co[c]||0)+1;
+    ROLES.forEach(function(r){if(x.p.toLowerCase().indexOf(r.toLowerCase())>=0) ro[r]=(ro[r]||0)+1})});
+  var bm=topN(mo,1)[0],tc=topN(co,1)[0],tr=topN(ro,1)[0],hide=$('hide').checked;
+  var sub=net?'Your network now stands at '+net.toLocaleString('en-US')+'.':'A year of showing up.';
+  if(tr) sub+=' Most new connections are in '+tr+' roles.';
+  if(tc&&!hide) sub+=' Top company: '+tc+'.';
+  var head=D.conn.length?nc.length.toLocaleString('en-US')+(nc.length===1?' new connection in ':' new connections in ')+y+'.':(posts+rx+cm).toLocaleString('en-US')+' moves on LinkedIn in '+y+'.';
+  canvas=Card.poster({kicker:'LinkedIn Wrapped  |  '+y,headline:head,sub:sub,
+    stats:[{v:D.shares.length?posts.toLocaleString('en-US'):'n/a',l:'Posts'},{v:D.react.length?rx.toLocaleString('en-US'):'n/a',l:'Reactions given'},{v:D.comm.length?cm.toLocaleString('en-US'):'n/a',l:'Comments written'},{v:bm!==undefined?MN[+bm]:'n/a',l:'Busiest month to connect'}],
+    footer:'Made with LinkedIn Wrapped',hue:205});
+  Card.show($('out'),canvas,420);
+  txt='My LinkedIn Wrapped '+y+': '+nc.length+' new connections, '+posts+' posts, '+rx+' reactions, '+cm+' comments.'+(bm!==undefined?' Busiest month: '+MN[+bm]+'.':'');
+  $('png').disabled=$('copy').disabled=false;
+}
+function sample(){
+  var C=['Acme Co','Northwind','Globex','Initech','Umbrella','Hooli'],P=['Customer Success Manager','Founder','Account Executive','Product Manager','Software Engineer','Head of Sales'],y=new Date().getFullYear(),M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],r=mulberry(11);
+  var c=['Notes:','"When exporting your connection data, you may notice that some of the email addresses are missing."','','First Name,Last Name,URL,Email Address,Company,Position,Connected On'];
+  for(var i=0;i<420;i++){var yy=y-(i%5===0?1:0),m=Math.floor(Math.pow(r(),1.3)*Math.min(11,new Date().getMonth())+0);c.push('Pat,Sample,x,,'+C[i%6]+','+P[Math.floor(r()*6)]+','+String(1+i%27).padStart(2,'0')+' '+M[m]+' '+yy)}
+  var s=['Date,ShareLink,ShareCommentary,SharedUrl,MediaUrl,Visibility'],q=['Date,Type,Link'],m2=['Date,Link,Message'];
+  function ts(i){var d=new Date(y,Math.floor(r()*Math.min(11,new Date().getMonth())),1+i%27,9,0,0);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' 09:00:00'}
+  for(i=0;i<46;i++) s.push(ts(i)+',x,"post text",,,MEMBER_NETWORK');
+  for(i=0;i<830;i++) q.push(ts(i)+',LIKE,x');
+  for(i=0;i<190;i++) m2.push(ts(i)+',x,"nice"');
+  return [c.join('\n'),s.join('\n'),q.join('\n'),m2.join('\n')];
+}
+UI.dropzone('drop','file',load,false);
+$('sample').addEventListener('click',function(){D={conn:[],shares:[],react:[],comm:[]};var seen=sample().map(ingest).filter(function(k){return k!=='skip'});finish(seen)});
+['year','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'linkedin-wrapped.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>
+
+</main></body></html>
