@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Daily Guess</title><meta name="description" content="Five daily guesses: three years and two distances. Same five for everyone.">
+<style>:root{--bg:#f4f1ea;--ink:#1c1b19;--mute:#6f6a60;--card:#fffdf8;--line:#d9d3c5;--accent:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--ink:#ece8de;--mute:#9a9486;--card:#1f1e1b;--line:#37342d;--accent:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 24px;max-width:58ch}
+.grid{display:grid;gap:24px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:minmax(0,1fr) 420px;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;transition:.15s}
+.drop.over,.drop:hover,.drop:focus{border-color:var(--accent);outline:none}
+.drop strong{display:block;font-size:18px}
+.drop span{color:var(--mute);font-size:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input[type=number],input[type=text],input[type=date],input[type=color],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=color]{padding:2px;height:40px}
+input[type=range]{width:100%}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:14px}
+.chk label{margin:0;color:var(--ink)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:9px 14px}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.note{font-size:13px;color:var(--mute);margin-top:14px}
+.err{color:#b91c1c;font-size:14px;margin-top:10px;min-height:1px}
+.preview{min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--mute);text-align:center}
+a{color:var(--accent)}
+.priv{font-size:13px;color:var(--mute);margin-top:28px;border-top:1px solid var(--line);padding-top:14px}
+</style></head>
+<body><main>
+<h1>Daily Guess</h1>
+<p class="sub">Three "what year?" questions and two "how far?" questions, the same five for everyone each day. Get close and you score green. Share the grid.</p>
+<style>
+.g1{max-width:640px;margin:0 auto}
+.q{font-size:clamp(20px,4vw,28px);font-weight:800;line-height:1.25;margin:6px 0 16px}
+.prog{color:var(--mute);font-size:14px}
+.big{font-size:34px;font-weight:800;text-align:center;margin:10px 0}
+.res{font-size:38px;letter-spacing:4px;text-align:center;margin:10px 0}
+.fb{text-align:center;margin-top:10px;min-height:48px}
+</style>
+<div class="g1"><section class="card" id="game"></section>
+<div class="btns" style="justify-content:center"><button class="primary" id="share" style="display:none">Copy result</button><button id="png" style="display:none">Download image</button></div>
+<p class="note" id="stats" style="text-align:center"></p></div>
+<p class="priv">Runs entirely in your browser. Nothing is uploaded and there is no tracking.</p>
+<script>
+var $=function(id){return document.getElementById(id)};
+var DAY=864e5;
+function parseCSV(t){
+  var out=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){var c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c==='"') q=true; else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n') i++; row.push(f);f=''; if(row.length>1||row[0]!=='') out.push(row); row=[] }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row)}
+  return out;
+}
+function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shuffled(a,r){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(r()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+
+var Card=(function(){
+var MONO='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', SANS='system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+function mk(w,h,sc){var c=document.createElement('canvas');c.width=w*sc;c.height=h*sc;var g=c.getContext('2d');g.scale(sc,sc);return {c:c,g:g}}
+function wrapText(g,text,maxW){
+  var words=String(text).split(' '),lines=[],cur='';
+  words.forEach(function(w){var t=cur?cur+' '+w:w; if(g.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t});
+  if(cur) lines.push(cur); return lines;
+}
+/* lines: [{t:'sep'|'c'|'r', l, r, cls:'b big m'}] */
+function receipt(lines){
+  var sc=2,w=440,lh=22,pad=28;
+  var h=pad*2+lines.reduce(function(a,x){return a+(x.t==='sep'?14:(/big/.test(x.cls||'')?30:lh))},0);
+  var m=mk(w,h,sc),g=m.g; g.fillStyle='#fffefa'; g.fillRect(0,0,w,h);
+  var y=pad;
+  lines.forEach(function(x){
+    if(x.t==='sep'){g.strokeStyle='#1c1b19';g.setLineDash([4,3]);g.beginPath();g.moveTo(pad,y+5);g.lineTo(w-pad,y+5);g.stroke();y+=14;return}
+    var big=/big/.test(x.cls||''),bold=/\bb\b/.test(x.cls||''),mute=/\bm\b/.test(x.cls||'');
+    g.font=(bold?'700 ':'400 ')+(big?'20px ':'13px ')+MONO; g.fillStyle=mute?'#6f6a60':'#1c1b19'; y+=big?22:16;
+    if(x.t==='c'){g.textAlign='center';g.fillText(x.l,w/2,y)}
+    else{g.textAlign='left';g.fillText(x.l,pad,y);g.textAlign='right';g.fillText(x.r,w-pad,y)}
+    y+=big?8:6;
+  });
+  return m.c;
+}
+function receiptText(lines){
+  var W=40;
+  return lines.map(function(x){
+    if(x.t==='sep') return '-'.repeat(W);
+    if(x.t==='c'){return ' '.repeat(Math.max(0,Math.floor((W-x.l.length)/2)))+x.l}
+    return x.l+' '.repeat(Math.max(1,W-x.l.length-x.r.length))+x.r;
+  }).join('\n');
+}
+/* o: {kicker, headline, sub, stats:[{v,l}] (max 4), footer, hue} */
+function poster(o){
+  var W=1080,H=1350,m=mk(W,H,1),g=m.g,h=o.hue==null?20:o.hue;
+  var gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,'hsl('+h+',65%,13%)'); gr.addColorStop(1,'hsl('+((h+50)%360)+',70%,30%)');
+  g.fillStyle=gr; g.fillRect(0,0,W,H);
+  g.globalAlpha=.1; g.fillStyle='#fff'; g.beginPath(); g.arc(W-100,170,270,0,7); g.fill(); g.beginPath(); g.arc(60,H-300,210,0,7); g.fill(); g.globalAlpha=1;
+  g.textBaseline='alphabetic'; g.textAlign='left'; g.fillStyle='#fff';
+  g.font='700 30px '+SANS; g.globalAlpha=.8; g.fillText(String(o.kicker||'').toUpperCase(),80,120); g.globalAlpha=1;
+  var size=112,lines;
+  for(;;){g.font='800 '+size+'px '+SANS; lines=wrapText(g,o.headline,W-160); if(lines.length<=4||size<=52) break; size-=6}
+  var y=270; lines.forEach(function(l){g.fillText(l,80,y); y+=size*1.1});
+  if(o.sub){g.font='400 40px '+SANS; g.globalAlpha=.85; y+=14; wrapText(g,o.sub,W-160).slice(0,3).forEach(function(l){g.fillText(l,80,y);y+=52}); g.globalAlpha=1}
+  var st=(o.stats||[]).slice(0,4), bw=(W-160-30)/2, bh=190;
+  st.forEach(function(s,i){
+    var bx=80+(i%2)*(bw+30), by=H-510+Math.floor(i/2)*(bh+24);
+    g.fillStyle='rgba(255,255,255,.12)'; g.beginPath(); if(g.roundRect) g.roundRect(bx,by,bw,bh,24); else g.rect(bx,by,bw,bh); g.fill();
+    g.fillStyle='#fff'; var vs=68; do{g.font='800 '+vs+'px '+SANS; vs-=4}while(g.measureText(String(s.v)).width>bw-48&&vs>28);
+    g.fillText(String(s.v),bx+24,by+98);
+    g.font='400 26px '+SANS; g.globalAlpha=.75; g.fillText(String(s.l).toUpperCase(),bx+24,by+150); g.globalAlpha=1;
+  });
+  g.font='500 28px '+SANS; g.globalAlpha=.7; g.fillStyle='#fff'; g.fillText(o.footer||'',80,H-44); g.globalAlpha=1;
+  return m.c;
+}
+function show(el,canvas,maxW){
+  el.textContent=''; canvas.style.cssText='width:100%;max-width:'+(maxW||440)+'px;height:auto;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.25);display:block;margin:0 auto';
+  el.appendChild(canvas);
+}
+function download(canvas,name){var a=document.createElement('a');a.download=name||'share.png';a.href=canvas.toDataURL('image/png');a.click()}
+function copy(text,btn){
+  var old=btn.textContent;
+  (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(function(){btn.textContent='Copied'},function(){btn.textContent='Copy failed'});
+  setTimeout(function(){btn.textContent=old},1500);
+}
+return {receipt:receipt,receiptText:receiptText,poster:poster,show:show,download:download,copy:copy,wrapText:wrapText,MONO:MONO,SANS:SANS};
+})();
+var UI={
+  dropzone:function(dropId,fileId,cb,asText){
+    var drop=$(dropId),fi=$(fileId);
+    function take(files){if(!files||!files.length) return; if(asText===false){cb(files)} else {var r=new FileReader(); r.onload=function(){cb(String(r.result))}; r.onerror=function(){UI.err('Could not read that file.')}; r.readAsText(files[0])}}
+    drop.addEventListener('click',function(){fi.click()});
+    drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fi.click()}});
+    fi.addEventListener('change',function(){take(fi.files)});
+    ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+    ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+    drop.addEventListener('drop',function(e){take(e.dataTransfer.files)});
+  },
+  err:function(m){var e=$('err'); if(e) e.textContent=m||''},
+  startOfWeek:function(d){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x}
+};
+
+var EV=[["The Berlin Wall falls",1989],["Apollo 11 lands the first people on the Moon",1969],["The Great Fire of London",1666],["Magna Carta is sealed",1215],["The storming of the Bastille",1789],["The Titanic sinks",1912],["The first iPhone goes on sale",2007],["The first website goes online",1991],["Columbus's first voyage across the Atlantic",1492],["The Battle of Hastings",1066],["The Chernobyl disaster",1986],["The Wright brothers' first powered flight",1903],["Victory in Europe Day ends the war in Europe",1945],["The US Declaration of Independence is adopted",1776],["Constantinople falls to the Ottomans",1453],["Krakatoa erupts",1883],["Alexander Fleming discovers penicillin",1928],["The Wall Street Crash",1929],["Nelson Mandela is released from prison",1990],["Euro notes and coins enter circulation",2002],["Google is founded",1998],["The Eiffel Tower is completed",1889],["Napoleon is defeated at Waterloo",1815],["India becomes independent",1947],["The Suez Canal opens",1869],["Sputnik 1 is launched",1957],["The first successful summit of Mount Everest",1953],["The first modern Olympic Games in Athens",1896],["The WHO declares COVID-19 a pandemic",2020],["Amazon is founded",1994],["The Panama Canal opens",1914],["The Mayflower sails to America",1620],["The Beatles appear on The Ed Sullivan Show",1964],["The Russian Revolution of October",1917],["Chandrayaan-3 lands near the Moon's south pole",2023]];
+var CITY=[["London",51.51,-0.13],["Paris",48.86,2.35],["New York",40.71,-74.01],["Tokyo",35.68,139.69],["Sydney",-33.87,151.21],["Delhi",28.61,77.21],["Mumbai",19.08,72.88],["Cairo",30.04,31.24],["Cape Town",-33.92,18.42],["Rio de Janeiro",-22.91,-43.17],["Mexico City",19.43,-99.13],["Moscow",55.76,37.62],["Beijing",39.9,116.4],["Singapore",1.35,103.82],["Dubai",25.2,55.27],["Istanbul",41.01,28.98],["Los Angeles",34.05,-118.24],["Nairobi",-1.29,36.82],["Buenos Aires",-34.6,-58.38],["Reykjavik",64.15,-21.94],["Honolulu",21.31,-157.86],["Anchorage",61.22,-149.9],["Lima",-12.05,-77.04],["Toronto",43.65,-79.38],["Berlin",52.52,13.4],["Rome",41.9,12.5],["Bangkok",13.76,100.5],["Auckland",-36.85,174.76],["Lagos",6.52,3.38],["Santiago",-33.45,-70.67],["Seoul",37.57,126.98],["Jakarta",-6.21,106.85],["Kathmandu",27.72,85.32],["Lisbon",38.72,-9.14],["Vancouver",49.28,-123.12]];
+function km(a,b){var R=6371,t=Math.PI/180,dl=(b[1]-a[1])*t,dg=(b[2]-a[2])*t,x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a[1]*t)*Math.cos(b[1]*t)*Math.sin(dg/2)*Math.sin(dg/2);return Math.round(2*R*Math.asin(Math.sqrt(x)))}
+var dayNo=Math.floor((Date.now()-new Date().getTimezoneOffset()*6e4)/DAY)-19000;
+var r1=mulberry(dayNo*104729+5),ev=shuffled(EV,r1).slice(0,3),cs=shuffled(CITY,r1);
+var Q=ev.map(function(e){return {k:'y',q:'In what year: '+e[0]+'?',a:e[1],min:1000,max:2026,def:1500}});
+for(var i=0;i<2;i++){var A=cs[i*2],B=cs[i*2+1];Q.push({k:'d',q:'How far apart are '+A[0]+' and '+B[0]+', in a straight line?',a:km(A,B),def:5000})}
+var key='dg-'+dayNo,st={g:[]},canvas=null;
+try{var s0=localStorage.getItem(key);if(s0) st=JSON.parse(s0)}catch(e){}
+function save(){try{localStorage.setItem(key,JSON.stringify(st))}catch(e){}}
+function band(q,g){
+  if(q.k==='y'){var e=Math.abs(g-q.a);return e<=5?0:e<=25?1:e<=100?2:3}
+  var r=Math.abs(g-q.a)/q.a;return r<=0.1?0:r<=0.25?1:r<=0.6?2:3;
+}
+var SQ=['🟩','🟨','🟧','🟥'];
+function grid(){return st.g.map(function(g,i){return SQ[band(Q[i],g)]}).join('')}
+function pts(){return st.g.reduce(function(s,g,i){return s+(3-band(Q[i],g))},0)}
+function streak(){var n=0,d=dayNo;try{if(!localStorage.getItem('dg-'+d)) d--;while(localStorage.getItem('dg-'+d)&&JSON.parse(localStorage.getItem('dg-'+d)).g.length===5){n++;d--}}catch(e){}return n}
+function shareText(){return 'Daily Guess #'+dayNo+' '+pts()+'/15\n'+grid()}
+function logv(p){return Math.round(100*Math.exp(p/1000*Math.log(20000/100)))}
+function draw(){
+  var g=$('game');g.textContent='';var i=st.g.length;
+  if(i>=5){
+    var h=document.createElement('div');h.innerHTML='<div class="prog">Done for today</div><div class="q">'+pts()+' out of 15</div><div class="res">'+grid()+'</div>';
+    Q.forEach(function(q,k){var p=document.createElement('div');p.className='prog';p.textContent=q.q.replace(/^In what year: /,'').replace(/\?$/,'')+' '+(q.k==='y'?'was '+q.a+'. You said '+st.g[k]:'is about '+q.a.toLocaleString('en-US')+' km. You said '+st.g[k].toLocaleString('en-US'));h.appendChild(p)});
+    g.appendChild(h);$('share').style.display=$('png').style.display='inline-block';
+    $('stats').textContent='Streak: '+streak()+' day'+(streak()===1?'':'s')+'. A new set arrives tomorrow.';
+    canvas=Card.poster({kicker:'Daily Guess #'+dayNo,headline:pts()+' out of 15',sub:'Three years and two distances.',stats:[{v:st.g.length+' guesses',l:'Played'},{v:streak()+(streak()===1?' day':' days'),l:'Streak'}],footer:'Made with Daily Guess',hue:262});
+    return;
+  }
+  var q=Q[i];
+  g.innerHTML='<div class="prog">Question '+(i+1)+' of 5</div>';
+  var qq=document.createElement('div');qq.className='q';qq.textContent=q.q;g.appendChild(qq);
+  var v=document.createElement('div');v.className='big';g.appendChild(v);
+  var sl=document.createElement('input');sl.type='range';sl.setAttribute('aria-label','Your guess');
+  var cur;
+  if(q.k==='y'){sl.min=q.min;sl.max=q.max;sl.value=q.def;cur=function(){return +sl.value};v.textContent=sl.value;sl.addEventListener('input',function(){v.textContent=sl.value})}
+  else{sl.min=0;sl.max=1000;sl.value=500;cur=function(){return logv(+sl.value)};v.textContent=cur().toLocaleString('en-US')+' km';sl.addEventListener('input',function(){v.textContent=cur().toLocaleString('en-US')+' km'})}
+  g.appendChild(sl);
+  var b=document.createElement('button');b.className='primary';b.textContent='Lock it in';b.style.marginTop='14px';
+  var fb=document.createElement('div');fb.className='fb';
+  b.addEventListener('click',function(){
+    var gv=cur(),bd=band(q,gv);b.disabled=true;sl.disabled=true;
+    fb.textContent=SQ[bd]+' '+(q.k==='y'?'It was '+q.a:'It is about '+q.a.toLocaleString('en-US')+' km');
+    st.g.push(gv);save();setTimeout(draw,1500);
+  });
+  g.appendChild(b);g.appendChild(fb);
+}
+$('share').addEventListener('click',function(){Card.copy(shareText(),$('share'))});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'daily-guess.png')});
+draw();
+</script>
+
+</main></body></html>

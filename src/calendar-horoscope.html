@@ -1,0 +1,64 @@
+<!-- title: Calendar Horoscope | Your calendar reveals your work personality. Runs in your browser. -->
+<h1>Calendar Horoscope</h1>
+<p class="sub">The shape of your week says who you are. Drop in your calendar and get your type, your lucky hour and what to avoid. For entertainment, with real numbers underneath.</p>
+<div class="grid">
+<section class="card">
+<!--@ICSDROP-->
+<label for="weeks">Look at the last</label>
+<select id="weeks"><option value="4">4 weeks</option><option value="8">8 weeks</option><option value="12">12 weeks</option></select>
+<p class="note">Reads working days only (Monday to Friday, 9:00 to 18:00). Counts meetings with two or more people.</p>
+</section>
+<section><div class="preview" id="out">Your reading appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@ICS*/
+/*@CARD*/
+var events=[],canvas=null,txt='';
+var DN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var TYPES={
+ marathoner:{n:'The Marathoner',hue:12,l:['You do not attend meetings, you endure a continuous broadcast of them.','Lunch is a rumour. Water is a suggestion.']},
+ crier:{n:'The Town Crier',hue:36,l:['Your meetings need a megaphone and a seating plan.','Everyone is invited. Few are required. All will attend.']},
+ diplomat:{n:'The Diplomat',hue:200,l:['Your week is a series of small, important conversations.','You hold the real information, one coffee at a time.']},
+ owl:{n:'The Night Owl',hue:265,l:['Your calendar keeps working after the sun has clocked out.','Time zones are your natural habitat.']},
+ lark:{n:'The Early Bird',hue:48,l:['You are in a meeting before the coffee is.','Your best ideas arrive at 8:05 and die at 8:45.']},
+ monk:{n:'The Monk',hue:150,l:['Your calendar is mostly silence. Guard it with your life.','You make things instead of discussing them. Rare.']},
+ juggler:{n:'The Juggler',hue:330,l:['Every day is a different mix and none of it is a surprise.','You are always almost on time for something.']}
+};
+function run(){
+  if(!events.length) return; UI.err('');
+  var weeks=+$('weeks').value,now=new Date(),to=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1),from=new Date(to.getTime()-weeks*7*DAY);
+  var occ=ICS.expand(events,from,to).filter(function(o){var d=o.start.getDay();return d>0&&d<6});
+  if(!occ.length){UI.err('No weekday meetings with two or more people in that period.');return}
+  var hrs=0,b2b=0,sumP=0,one=0,early=0,late=0,big=0,byDay=[0,0,0,0,0,0,0],freeHours={},workDays={},prev=null,pd='';
+  occ.forEach(function(o){
+    hrs+=o.mins/60; sumP+=o.ppl; if(o.ppl===2) one++; if(o.ppl>=10) big++;
+    if(o.start.getHours()<10) early++; if(o.end.getHours()>17||(o.end.getHours()===17&&o.end.getMinutes()>30)) late++;
+    var dk=o.start.toDateString(); workDays[dk]=workDays[dk]||[]; workDays[dk].push(o); byDay[o.start.getDay()]+=o.mins/60;
+    if(prev&&dk===pd&&(o.start-prev.end)/6e4<=10) b2b++; prev=o; pd=dk;
+  });
+  var n=occ.length,load=hrs/(weeks*40);
+  /* lucky hour: the working hour most often completely free across the whole period */
+  var allDays=[];for(var t=new Date(from);t<to;t=new Date(t.getTime()+DAY)){var dw=t.getDay(); if(dw>0&&dw<6) allDays.push(t.toDateString())}
+  for(var hr=9;hr<18;hr++){freeHours[hr]=0; allDays.forEach(function(dk){
+    var busy=(workDays[dk]||[]).some(function(o){return o.start.getHours()*60+o.start.getMinutes()<(hr+1)*60&&o.end.getHours()*60+o.end.getMinutes()>hr*60}); if(!busy) freeHours[hr]++})}
+  var lucky=9;for(hr=9;hr<18;hr++){if(freeHours[hr]>freeHours[lucky]) lucky=hr}
+  var bd=1;for(var i=1;i<6;i++){if(byDay[i]>byDay[bd]) bd=i}
+  var key='juggler';
+  if(load>0.5&&b2b/n>0.5) key='marathoner'; else if(big/n>0.25) key='crier'; else if(one/n>0.5) key='diplomat';
+  else if(late/n>0.2) key='owl'; else if(early/n>0.3) key='lark'; else if(load<0.15) key='monk';
+  var T=TYPES[key], line=T.l[Math.round(load*100)%2];
+  function hf(h){return (h%12||12)+(h<12?' am':' pm')}
+  canvas=Card.poster({kicker:'Calendar Horoscope',headline:T.n,sub:line,
+    stats:[{v:hf(lucky),l:'Lucky hour'},{v:DN[bd],l:'Avoid'},{v:Math.round(load*100)+'%',l:'Of your week is meetings'},{v:Math.round(b2b/n*100)+'%',l:'Back to back'}],
+    footer:'Made with Calendar Horoscope',hue:T.hue});
+  Card.show($('out'),canvas,420);
+  txt='My Calendar Horoscope says I am '+T.n+'. '+line+' Lucky hour: '+hf(lucky)+'. Avoid: '+DN[bd]+'.';
+  $('png').disabled=$('copy').disabled=false;
+}
+UI.dropzone('drop','file',function(t){events=ICS.parse(t); if(!events.length){UI.err('That file has no events. Is it an .ics calendar export?');return} run()});
+$('sample').addEventListener('click',function(){events=ICS.parse(ICS.sample()); run()});
+$('weeks').addEventListener('input',run);
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'calendar-horoscope.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

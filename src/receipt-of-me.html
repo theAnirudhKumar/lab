@@ -1,0 +1,51 @@
+<!-- title: Receipt of Me | Make a joke receipt of your week, your year or your life. -->
+<h1>Receipt of Me</h1>
+<p class="sub">Make a joke receipt of your week, your year or your relationship. Pick a template, change the lines, share the image. Purely for fun: every receipt carries a "not a real receipt" notice that cannot be turned off.</p>
+<div class="grid">
+<section class="card">
+<label for="tpl">Template</label>
+<select id="tpl"><option value="week">My week</option><option value="year">My year in coffee</option><option value="love">My relationship</option><option value="blank">Blank</option></select>
+<label for="store">Shop name</label><input id="store" type="text" maxlength="28">
+<label for="lines">Items, one per line: name | quantity | price</label>
+<textarea id="lines" rows="8"></textarea>
+<div class="row"><div><label for="cur">Currency or unit</label><input id="cur" type="text" value="" maxlength="6" placeholder="e.g. $ or pts"></div>
+<div><label for="tax">Tax percent</label><input id="tax" type="number" min="0" max="100" value="0"></div></div>
+<label for="thanks">Thank-you line</label><input id="thanks" type="text" maxlength="36">
+<p class="note">Prices are just numbers, so use them for hours, points, jokes or money. The total is worked out for you.</p>
+</section>
+<section><div class="preview" id="out"></div>
+<div class="btns" style="justify-content:center"><button class="primary" id="png">Download image</button><button id="copy">Copy text</button></div></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var TPL={
+ week:{s:'THE WEEK LTD',l:'Meetings that could be emails | 9 | 1\nCoffees | 14 | 1\n"Quick question" | 6 | 1\nSundays spent dreading Monday | 3 | 1\nTimes I said "let us circle back" | 11 | 1\nBrilliant ideas in the shower | 2 | 1',c:'pts',t:'Come again next week',x:0},
+ year:{s:'CAFFEINE & CO',l:'Flat whites | 212 | 4.5\nEmergency espressos | 37 | 3\n"Just one more" | 88 | 4\nFree refills I felt guilty about | 9 | 0',c:'$',t:'Your loyalty card is full',x:8},
+ love:{s:'US, INC.',l:'Cooking dinner | 120 | 1\nWho decides the film | 52 | 1\nThermostat negotiations | 31 | 1\nTimes I was right | 3 | 1\nTimes you were right | 97 | 1',c:'pts',t:'No refunds. No regrets.',x:0},
+ blank:{s:'MY SHOP',l:'Item one | 1 | 10\nItem two | 2 | 5',c:'$',t:'Thank you',x:0}
+};
+var canvas=null,txt='';
+function setTpl(){var t=TPL[$('tpl').value];$('store').value=t.s;$('lines').value=t.l;$('cur').value=t.c;$('thanks').value=t.t;$('tax').value=t.x;run()}
+function cut(s,n){return s.length>n?s.slice(0,n-1)+'...':s}
+function run(){
+  var cur=$('cur').value,sp=/^[A-Za-z]/.test(cur)?' ':'',total=0,L=[{t:'c',l:($('store').value||'SHOP').toUpperCase(),cls:'b big'},{t:'c',l:new Date().toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}),cls:'m'},{t:'sep'}];
+  function money(n){return sp?(Math.round(n*100)/100).toLocaleString('en-US')+' '+cur:cur+(Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:n%1?2:0})}
+  $('lines').value.split('\n').forEach(function(ln){
+    if(!ln.trim()) return; var p=ln.split('|').map(function(x){return x.trim()}),q=parseFloat(p[1]),pr=parseFloat(p[2]);
+    q=isNaN(q)?1:q;pr=isNaN(pr)?0:pr;var amt=q*pr;total+=amt;
+    L.push({t:'r',l:cut(p[0]||'',22)+(q!==1?' x'+q:''),r:money(amt)});
+  });
+  var tx=Math.max(0,+$('tax').value||0),tv=total*tx/100;
+  L.push({t:'sep'});
+  if(tx){L.push({t:'r',l:'SUBTOTAL',r:money(total)},{t:'r',l:'TAX '+tx+'%',r:money(tv)})}
+  L.push({t:'r',l:'TOTAL',r:money(total+tv),cls:'b big'},{t:'sep'},{t:'c',l:$('thanks').value,cls:'b'},{t:'sep'},
+   {t:'c',l:'NOT A REAL RECEIPT',cls:'b'},{t:'c',l:'FOR FUN ONLY. NOT VALID FOR',cls:'m'},{t:'c',l:'REFUNDS, EXPENSES OR PROOF OF PURCHASE.',cls:'m'},{t:'c',l:'Made with Receipt of Me',cls:'m'});
+  canvas=Card.receipt(L);Card.show($('out'),canvas,440);txt=Card.receiptText(L);
+}
+$('tpl').addEventListener('change',setTpl);
+['store','lines','cur','tax','thanks'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'receipt-of-me.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+setTpl();
+</script>

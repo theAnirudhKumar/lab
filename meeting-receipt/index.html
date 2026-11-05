@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Receipt</title>
+<meta name="description" content="Drop in your calendar and get a receipt for what your meetings really cost. Runs in your browser. Nothing is uploaded.">
+<style>
+:root{--bg:#f4f1ea;--ink:#1c1b19;--mute:#6f6a60;--card:#fffdf8;--line:#d9d3c5;--accent:#c2410c;--paper:#fffefa}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--ink:#ece8de;--mute:#9a9486;--card:#1f1e1b;--line:#37342d;--accent:#fb923c;--paper:#f6f2e7}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 24px;max-width:56ch}
+.grid{display:grid;gap:24px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:minmax(0,1fr) 380px;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;transition:.15s}
+.drop.over,.drop:hover{border-color:var(--accent)}
+.drop strong{display:block;font-size:18px}
+.drop span{color:var(--mute);font-size:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input[type=number],input[type=text],input[type=date],select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:14px}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:9px 14px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.steps{font-size:14px;color:var(--mute);margin:12px 0 0;padding-left:18px}
+.receipt{background:var(--paper);color:#1c1b19;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:22px 20px;border-radius:4px;box-shadow:0 8px 28px rgba(0,0,0,.18);position:relative;min-height:200px}
+.receipt .ln{display:flex;justify-content:space-between;gap:12px;white-space:pre}
+.receipt .ln span:first-child{overflow:hidden;text-overflow:ellipsis}
+.receipt .c{justify-content:center;text-align:center}
+.receipt .b{font-weight:700}
+.receipt .big{font-size:20px}
+.receipt .sep{border-top:1px dashed #1c1b19;margin:8px 0;height:0}
+.receipt .m{color:#6f6a60}
+.empty{color:#6f6a60;text-align:center;padding:40px 0}
+.note{font-size:13px;color:var(--mute);margin-top:16px}
+a{color:var(--accent)}
+.err{color:#b91c1c;font-size:14px;margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Meeting Receipt</h1>
+  <p class="sub">Drop in your calendar and see what your meetings really cost, in hours and money. It runs in your browser. Your calendar never leaves this page.</p>
+
+  <div class="grid">
+    <section class="card">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a calendar file">
+        <strong>Drop a calendar file here</strong>
+        <span>.ics export from Google Calendar, Outlook or Apple Calendar. Or click to choose.</span>
+        <input id="file" type="file" accept=".ics,text/calendar" hidden>
+      </div>
+      <ol class="steps">
+        <li>Google Calendar: Settings, Import and export, Export.</li>
+        <li>Outlook: Calendar, Share or Publish, save as .ics.</li>
+        <li>Apple Calendar: File, Export, Export.</li>
+      </ol>
+      <div class="btns"><button id="sample">Try with sample data</button></div>
+      <div class="err" id="err" role="alert"></div>
+
+      <div class="row">
+        <div><label for="rate">Cost per person-hour</label><input id="rate" type="number" min="0" step="5" value="60"></div>
+        <div><label for="cur">Currency</label>
+          <select id="cur"><option>$</option><option>€</option><option>£</option><option>₹</option><option>A$</option><option>C$</option></select></div>
+      </div>
+      <div class="row">
+        <div><label for="sal">Or yearly pay (I will convert it)</label><input id="sal" type="number" min="0" step="1000" placeholder="e.g. 120000"></div>
+        <div><label>&nbsp;</label><span class="note" id="salnote" style="margin:0;display:block;padding-top:8px">Pay / 2,080 hours</span></div>
+      </div>
+      <p class="note" style="margin-top:8px">A blended average is fine. The rate is applied to everyone in the room.</p>
+      <div class="row">
+        <div><label for="start">Start of period</label><input id="start" type="date"></div>
+        <div><label for="weeks">Weeks</label><input id="weeks" type="number" min="1" max="12" value="4"></div>
+      </div>
+      <div class="chk"><input id="hide" type="checkbox"><label for="hide" style="margin:0;color:var(--ink)">Hide meeting titles (safer to share)</label></div>
+      <p class="note">Counts meetings with two or more people. Skips all-day, cancelled and declined events. Recurring events are expanded across the period (daily, weekly, monthly). The cost is an estimate from the rate you set.</p>
+    </section>
+
+    <section>
+      <div class="receipt" id="receipt"><div class="empty">Your receipt appears here.</div></div>
+      <div class="btns">
+        <button class="primary" id="png" disabled>Download image</button>
+        <button id="copy" disabled>Copy text</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+(function(){
+'use strict';
+var DAY=864e5, state={events:[]};
+var $=function(id){return document.getElementById(id)};
+
+/* ---------- ICS parsing ---------- */
+function unfold(t){return t.replace(/\r\n/g,'\n').replace(/\r/g,'\n').replace(/\n[ \t]/g,'')}
+function parseProp(line){
+  var i=line.indexOf(':'); if(i<0) return null;
+  var head=line.slice(0,i), val=line.slice(i+1), parts=head.split(';'), p={name:parts[0].toUpperCase(),val:val,params:{}};
+  for(var k=1;k<parts.length;k++){var kv=parts[k].split('='); p.params[kv[0].toUpperCase()]=(kv[1]||'').replace(/"/g,'')}
+  return p;
+}
+function parseDate(p){
+  var v=p.val.trim(), m=v.match(/^(\d{4})(\d\d)(\d\d)(?:T(\d\d)(\d\d)(\d\d)?(Z)?)?$/);
+  if(!m) return null;
+  var allDay=!m[4];
+  var d=m[7]?new Date(Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0))):new Date(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+  return {d:d,allDay:allDay||p.params.VALUE==='DATE'};
+}
+function parseICS(text){
+  var lines=unfold(text).split('\n'), out=[], cur=null;
+  lines.forEach(function(l){
+    if(l==='BEGIN:VEVENT'){cur={att:0,declined:0,ex:[]};return}
+    if(l==='END:VEVENT'){if(cur) out.push(cur); cur=null; return}
+    if(!cur) return;
+    var p=parseProp(l); if(!p) return;
+    switch(p.name){
+      case 'SUMMARY': cur.title=p.val.replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\n/gi,' ').trim(); break;
+      case 'DESCRIPTION': cur.desc=p.val.replace(/\\n/gi,' ').trim(); break;
+      case 'DTSTART': cur.s=parseDate(p); break;
+      case 'DTEND': cur.e=parseDate(p); break;
+      case 'DURATION': cur.dur=p.val; break;
+      case 'STATUS': cur.status=p.val.toUpperCase(); break;
+      case 'RRULE': cur.rr=p.val; break;
+      case 'EXDATE': p.val.split(',').forEach(function(x){var q=parseDate({val:x,params:{}}); if(q) cur.ex.push(q.d.toDateString())}); break;
+      case 'ORGANIZER': cur.org=p.val.toLowerCase(); break;
+      case 'ATTENDEE':
+        if(/DECLINED/i.test(p.params.PARTSTAT||'')) cur.declined++;
+        else if(!/RESOURCE|ROOM/i.test(p.params.CUTYPE||'')){cur.att++; if(cur.org&&p.val.toLowerCase()===cur.org) cur.orgIn=true}
+        break;
+    }
+  });
+  return out;
+}
+function durMinutes(ev){
+  if(ev.s&&ev.e) return Math.round((ev.e.d-ev.s.d)/6e4);
+  if(ev.dur){var m=ev.dur.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/); if(m) return (+m[1]||0)*1440+(+m[2]||0)*60+(+m[3]||0)}
+  return 0;
+}
+function people(ev){return ev.att+((ev.org&&!ev.orgIn&&ev.att>0)?1:0)}
+
+/* ---------- recurrence ---------- */
+var BYDAY={SU:0,MO:1,TU:2,WE:3,TH:4,FR:5,SA:6};
+function occurrences(ev,from,to){
+  var s=ev.s.d, res=[];
+  if(!ev.rr){ if(s>=from&&s<to) res.push(s); return res }
+  var r={}; ev.rr.split(';').forEach(function(x){var kv=x.split('='); r[kv[0]]=kv[1]});
+  var freq=r.FREQ, inter=+(r.INTERVAL||1), count=r.COUNT?+r.COUNT:Infinity, until=null;
+  if(r.UNTIL){var u=parseDate({val:r.UNTIL,params:{}}); if(u) until=new Date(u.d.getTime()+(u.allDay?DAY:0))}
+  var days=r.BYDAY?r.BYDAY.split(',').map(function(x){return BYDAY[x.slice(-2)]}).filter(function(x){return x!==undefined}):null;
+  var n=0, cursor=new Date(s.getTime()), guard=0, hh=s.getHours(), mm=s.getMinutes(), ss=s.getSeconds();
+  function push(d){
+    if(until&&d>until) return false;
+    if(n>=count) return false;
+    n++;
+    if(d>=from&&d<to&&ev.ex.indexOf(d.toDateString())<0) res.push(d);
+    return true;
+  }
+  if(freq==='DAILY'){
+    while(cursor<to&&guard++<4000){
+      if(!days||days.indexOf(cursor.getDay())>=0){ if(!push(new Date(cursor))) break }
+      cursor=new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+inter,hh,mm,ss);
+    }
+  } else if(freq==='WEEKLY'){
+    var wk=new Date(s.getFullYear(),s.getMonth(),s.getDate()-s.getDay(),hh,mm,ss), list=days||[s.getDay()];
+    list=list.slice().sort(function(a,b){return a-b});
+    while(wk<to&&guard++<2000){
+      var stop=false;
+      for(var i=0;i<list.length;i++){
+        var d=new Date(wk.getFullYear(),wk.getMonth(),wk.getDate()+list[i],hh,mm,ss);
+        if(d<s) continue;
+        if(!push(d)){stop=true;break}
+      }
+      if(stop) break;
+      wk=new Date(wk.getFullYear(),wk.getMonth(),wk.getDate()+7*inter,hh,mm,ss);
+    }
+  } else if(freq==='MONTHLY'){
+    var i2=0;
+    while(guard++<600){
+      var d2=new Date(s.getFullYear(),s.getMonth()+i2*inter,s.getDate(),hh,mm,ss);
+      if(d2>=to) break;
+      if(d2.getDate()===s.getDate()){ if(!push(d2)) break }
+      i2++;
+    }
+  } else if(freq==='YEARLY'){
+    if(s>=from&&s<to) res.push(s);
+  } else if(s>=from&&s<to) res.push(s);
+  return res;
+}
+
+/* ---------- analysis ---------- */
+function analyse(events,from,weeks,rate){
+  var to=new Date(from.getTime()+weeks*7*DAY), items=[];
+  events.forEach(function(ev){
+    if(!ev.s||ev.s.allDay||ev.status==='CANCELLED') return;
+    var mins=durMinutes(ev), ppl=people(ev);
+    if(mins<=0||mins>600||ppl<2) return;
+    var occ=occurrences(ev,from,to).length;
+    if(!occ) return;
+    var noAgenda=!ev.desc||ev.desc.length<40;
+    var hrs=mins/60, cost=occ*hrs*ppl*rate;
+    var flags=[];
+    if(mins>=30&&ev.rr&&ppl>=8&&noAgenda) flags.push('status meeting, move updates to writing');
+    else if(mins>=30&&ppl>=6&&noAgenda) flags.push('no agenda, shrink the guest list');
+    if(mins>=60&&noAgenda&&ppl>=4) flags.push('an hour with no written purpose');
+    if(ppl>=12) flags.push('too many people to decide anything');
+    items.push({title:ev.title||'Untitled',occ:occ,mins:mins,ppl:ppl,hrs:occ*hrs,personHrs:occ*hrs*ppl,cost:cost,flags:flags,rec:!!ev.rr});
+  });
+  items.sort(function(a,b){return b.cost-a.cost});
+  var T={meetings:0,hrs:0,personHrs:0,cost:0,flagged:0,savings:0};
+  items.forEach(function(i){T.meetings+=i.occ;T.hrs+=i.hrs;T.personHrs+=i.personHrs;T.cost+=i.cost;
+    if(i.flags.length){T.flagged++; T.savings+=i.cost*0.4}});
+  return {items:items,T:T,from:from,to:to,weeks:weeks};
+}
+
+/* ---------- receipt lines ---------- */
+function money(n,cur){return cur+Math.round(n).toLocaleString('en-US')}
+function fdate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+function trunc(s,n){return s.length>n?s.slice(0,n-1)+'...':s}
+function verdict(R){
+  var share=R.T.hrs/(R.weeks*40);
+  if(R.T.meetings===0) return 'No multi-person meetings found in this period.';
+  if(share>0.5) return 'More than half your working time is meetings.';
+  if(share>0.3) return 'A third of your week is spoken for.';
+  if(R.T.flagged>=3) return 'Some of this could be an email.';
+  return 'A healthy load. Guard it.';
+}
+function buildLines(R,cur,hide,rate){
+  var L=[], T=R.T, n=0;
+  L.push({t:'c',l:'MEETING RECEIPT',cls:'b big'});
+  L.push({t:'c',l:fdate(R.from)+' to '+fdate(new Date(R.to.getTime()-DAY))+' ('+R.weeks+' wk)',cls:'m'});
+  L.push({t:'sep'});
+  L.push({t:'r',l:'MEETINGS',r:String(T.meetings)});
+  L.push({t:'r',l:'YOUR HOURS IN MEETINGS',r:T.hrs.toFixed(1)});
+  L.push({t:'r',l:'PERSON-HOURS (EVERYONE)',r:T.personHrs.toFixed(0)});
+  L.push({t:'r',l:'SHARE OF A 40H WEEK',r:Math.round(T.hrs/(R.weeks*40)*100)+'%'});
+  L.push({t:'sep'});
+  L.push({t:'c',l:'MOST EXPENSIVE',cls:'b'});
+  R.items.slice(0,6).forEach(function(i){
+    n++;
+    var name=hide?'Meeting '+n:trunc(i.title,24);
+    L.push({t:'r',l:name+(i.occ>1?' x'+i.occ:''),r:money(i.cost,cur)});
+    L.push({t:'r',l:'  '+i.ppl+' people, '+i.mins+' min'+(i.flags.length?'  !':''),r:'',cls:'m'});
+  });
+  L.push({t:'sep'});
+  L.push({t:'r',l:'TOTAL',r:money(T.cost,cur),cls:'b big'});
+  if(T.flagged){
+    L.push({t:'r',l:T.flagged+' look like they could shrink',r:'',cls:'m'});
+    L.push({t:'r',l:'Potential saving (est.)',r:money(T.savings,cur),cls:'m'});
+  }
+  L.push({t:'sep'});
+  L.push({t:'c',l:verdict(R),cls:'b'});
+  L.push({t:'c',l:'Rate used: '+cur+rate+'/person-hour',cls:'m'});
+  L.push({t:'c',l:'Fix the worst three: meeting-design',cls:'m'});
+  L.push({t:'c',l:'github.com/theAnirudhKumar/meeting-design',cls:'m'});
+  return L;
+}
+function renderDOM(lines){
+  var box=$('receipt'); box.textContent='';
+  lines.forEach(function(x){
+    var d=document.createElement('div');
+    if(x.t==='sep'){d.className='sep'}
+    else{
+      d.className='ln'+(x.t==='c'?' c':'')+(x.cls?' '+x.cls:'');
+      var a=document.createElement('span'); a.textContent=x.l; d.appendChild(a);
+      if(x.t==='r'){var b=document.createElement('span'); b.textContent=x.r; d.appendChild(b)}
+    }
+    box.appendChild(d);
+  });
+}
+function toText(lines){
+  var W=40;
+  return lines.map(function(x){
+    if(x.t==='sep') return '-'.repeat(W);
+    if(x.t==='c'){var pad=Math.max(0,Math.floor((W-x.l.length)/2)); return ' '.repeat(pad)+x.l}
+    var gap=Math.max(1,W-x.l.length-x.r.length); return x.l+' '.repeat(gap)+x.r;
+  }).join('\n');
+}
+function drawPNG(lines){
+  var sc=2, w=440, lh=22, pad=28, h=pad*2+lines.reduce(function(a,x){return a+(x.t==='sep'?14:(/big/.test(x.cls||'')?30:lh))},0);
+  var c=document.createElement('canvas'); c.width=w*sc; c.height=h*sc;
+  var g=c.getContext('2d'); g.scale(sc,sc);
+  g.fillStyle='#fffefa'; g.fillRect(0,0,w,h);
+  var y=pad, mono='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+  lines.forEach(function(x){
+    if(x.t==='sep'){g.strokeStyle='#1c1b19'; g.setLineDash([4,3]); g.beginPath(); g.moveTo(pad,y+5); g.lineTo(w-pad,y+5); g.stroke(); y+=14; return}
+    var big=/big/.test(x.cls||''), bold=/\bb\b/.test(x.cls||''), mute=/\bm\b/.test(x.cls||'');
+    g.font=(bold?'700 ':'400 ')+(big?'20px ':'13px ')+mono;
+    g.fillStyle=mute?'#6f6a60':'#1c1b19'; y+=big?22:16;
+    if(x.t==='c'){g.textAlign='center'; g.fillText(x.l,w/2,y)}
+    else{g.textAlign='left'; g.fillText(x.l,pad,y); g.textAlign='right'; g.fillText(x.r,w-pad,y)}
+    y+=big?8:6;
+  });
+  return c;
+}
+
+/* ---------- wiring ---------- */
+var lastLines=null;
+function run(){
+  var err=$('err'); err.textContent='';
+  if(!state.events.length) return;
+  var rate=Math.max(0,+$('rate').value||0), weeks=Math.min(12,Math.max(1,+$('weeks').value||4));
+  var sv=$('start').value, from=sv?new Date(sv+'T00:00:00'):new Date();
+  from.setHours(0,0,0,0);
+  var R=analyse(state.events,from,weeks,rate);
+  lastLines=buildLines(R,$('cur').value,$('hide').checked,rate);
+  renderDOM(lastLines);
+  $('png').disabled=$('copy').disabled=false;
+  if(!R.T.meetings) err.textContent='No meetings with two or more people in that period. Try moving the start date.';
+}
+function defaultStart(events){
+  var now=new Date(); now.setHours(0,0,0,0);
+  var day=now.getDay(); now.setDate(now.getDate()-((day+6)%7));
+  var has=events.some(function(e){return e.s&&(e.rr||e.s.d>=now)});
+  if(has) return now;
+  var min=null; events.forEach(function(e){if(e.s&&(!min||e.s.d<min)) min=e.s.d});
+  var d=new Date(min||now); d.setHours(0,0,0,0); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d;
+}
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function load(text){
+  var ev=parseICS(text);
+  if(!ev.length){$('err').textContent='That file has no events. Is it a calendar .ics export?'; return}
+  state.events=ev; $('start').value=iso(defaultStart(ev)); run();
+}
+function readFile(f){
+  var r=new FileReader(); r.onload=function(){load(String(r.result))}; r.onerror=function(){$('err').textContent='Could not read that file.'}; r.readAsText(f);
+}
+function sampleICS(){
+  var m=new Date(); m.setHours(0,0,0,0); m.setDate(m.getDate()-((m.getDay()+6)%7));
+  function f(d,h,mi){var x=new Date(d.getTime()); x.setHours(h,mi,0,0); return x.getFullYear()+String(x.getMonth()+1).padStart(2,'0')+String(x.getDate()).padStart(2,'0')+'T'+String(h).padStart(2,'0')+String(mi).padStart(2,'0')+'00'}
+  function att(n){var s=''; for(var i=0;i<n;i++) s+='ATTENDEE;PARTSTAT=ACCEPTED:mailto:p'+i+'@example.com\n'; return s}
+  function ev(t,d,h1,m1,h2,m2,n,rr,desc){return 'BEGIN:VEVENT\nSUMMARY:'+t+'\nDTSTART:'+f(d,h1,m1)+'\nDTEND:'+f(d,h2,m2)+'\n'+(rr?'RRULE:'+rr+'\n':'')+(desc?'DESCRIPTION:'+desc+'\n':'')+att(n)+'END:VEVENT\n'}
+  var long='Agenda: decide Q4 launch scope, owner for each risk, go or no-go by Friday.';
+  return 'BEGIN:VCALENDAR\n'+
+   ev('Weekly Product Sync',new Date(m.getTime()+4*DAY),10,0,11,0,11,'FREQ=WEEKLY;BYDAY=FR')+
+   ev('All-hands',new Date(m.getTime()+1*DAY),15,0,16,0,38,'FREQ=WEEKLY;BYDAY=TU')+
+   ev('Standup',m,9,30,9,45,7,'FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR')+
+   ev('1:1 with manager',new Date(m.getTime()+2*DAY),14,0,14,30,1,'FREQ=WEEKLY;BYDAY=WE')+
+   ev('Customer review: Brightwell',new Date(m.getTime()+3*DAY),11,0,12,0,5,'',long)+
+   ev('Roadmap brainstorm',new Date(m.getTime()+2*DAY),16,0,17,30,9,'')+
+   ev('Kickoff: Project Atlas',new Date(m.getTime()+3*DAY),13,0,14,0,14,'')+
+   'END:VCALENDAR';
+}
+var drop=$('drop'), fi=$('file');
+drop.addEventListener('click',function(){fi.click()});
+drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fi.click()}});
+fi.addEventListener('change',function(){if(fi.files[0]) readFile(fi.files[0])});
+['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+drop.addEventListener('drop',function(e){var f=e.dataTransfer.files[0]; if(f) readFile(f)});
+$('sample').addEventListener('click',function(){load(sampleICS())});
+['rate','cur','start','weeks','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('sal').addEventListener('input',function(){
+  var s=+$('sal').value;
+  if(s>0){var r=Math.round(s/2080*100)/100; $('rate').value=r; $('salnote').textContent='= '+r+' per hour'}
+  else $('salnote').textContent='Pay / 2,080 hours';
+  run();
+});
+$('png').addEventListener('click',function(){
+  if(!lastLines) return;
+  var a=document.createElement('a'); a.download='meeting-receipt.png'; a.href=drawPNG(lastLines).toDataURL('image/png'); a.click();
+});
+$('copy').addEventListener('click',function(){
+  if(!lastLines) return;
+  var t=toText(lastLines), b=$('copy');
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){b.textContent='Copied'},function(){b.textContent='Copy failed'});
+  setTimeout(function(){b.textContent='Copy text'},1500);
+});
+window.__mr={parseICS:parseICS,analyse:analyse,occurrences:occurrences,load:load};
+})();
+</script>
+</body>
+</html>

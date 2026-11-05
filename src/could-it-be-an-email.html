@@ -1,0 +1,42 @@
+<!-- title: Could It Have Been an Email? | One score for how much of your calendar could have been an email. -->
+<h1>Could It Have Been an Email?</h1>
+<p class="sub">One score for your calendar: the share of your meeting time that probably could have been an email. Compare it with your friends. Nothing leaves your browser.</p>
+<div class="grid">
+<section class="card">
+<!--@ICSDROP-->
+<label for="weeks">Look at the last</label>
+<select id="weeks"><option value="4">4 weeks</option><option value="8">8 weeks</option><option value="12">12 weeks</option></select>
+<p class="note">A meeting is flagged when it has 6 or more people, runs 30 minutes or more and has no written agenda in the invite. Recurring meetings of 8 or more people with no agenda are flagged too. It is a rule of thumb, so treat the score as a conversation starter.</p>
+</section>
+<section><div class="preview" id="out">Your score appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@ICS*/
+/*@CARD*/
+var events=[],canvas=null,txt='';
+function label(s){return s<10?'Suspiciously Efficient':s<30?'Mostly Honest':s<55?'Email With Extra Steps':'Certified Over-Meeted'}
+function run(){
+  if(!events.length) return; UI.err('');
+  var weeks=+$('weeks').value,now=new Date(),to=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1),from=new Date(to.getTime()-weeks*7*DAY);
+  var occ=ICS.expand(events,from,to);
+  if(!occ.length){UI.err('No meetings with two or more people in that period.');return}
+  var tot=0,fl=0,nf=0;
+  occ.forEach(function(o){
+    var h=o.ppl*o.mins/60; tot+=h;
+    if(!o.agenda&&o.mins>=30&&(o.ppl>=6||(o.rec&&o.ppl>=8))){fl+=h;nf++}
+  });
+  var score=Math.round(fl/tot*100), back=Math.round(fl*0.5);
+  canvas=Card.poster({kicker:'Could it have been an email?',headline:score+'% could have been an email.',sub:label(score),
+    stats:[{v:nf+' of '+occ.length,l:'Meetings flagged'},{v:back.toLocaleString('en-US')+' h',l:'Person-hours returnable (est.)'},{v:weeks+' weeks',l:'Period'},{v:label(score).split(' ')[0],l:'Verdict'}],
+    footer:'Made with Could It Have Been an Email?',hue:score>=30?8:150});
+  Card.show($('out'),canvas,420);
+  txt='My calendar scores '+score+'%: '+label(score)+'. '+nf+' of '+occ.length+' meetings could have been an email.';
+  $('png').disabled=$('copy').disabled=false;
+}
+UI.dropzone('drop','file',function(t){events=ICS.parse(t); if(!events.length){UI.err('That file has no events. Is it an .ics calendar export?');return} run()});
+$('sample').addEventListener('click',function(){events=ICS.parse(ICS.sample()); run()});
+$('weeks').addEventListener('input',run);
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'could-it-be-an-email.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

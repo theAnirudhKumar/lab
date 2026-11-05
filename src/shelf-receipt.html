@@ -1,0 +1,74 @@
+<!-- title: Shelf Receipt | Your Goodreads or Letterboxd year as a receipt. -->
+<h1>Shelf Receipt</h1>
+<p class="sub">Your reading or your films for the year, as a receipt. Works with a Goodreads library export or a Letterboxd diary export. Read in your browser, never uploaded.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose an export file"><strong>Drop goodreads_library_export.csv or Letterboxd diary.csv</strong><span>Goodreads: My Books, Import and export. Letterboxd: Settings, Import and export. Or click to choose.</span><input id="file" type="file" accept=".csv" hidden></div>
+<div class="btns"><button id="sbook">Sample books</button><button id="sfilm">Sample films</button></div><div class="err" id="err" role="alert"></div>
+<label for="year">Year</label><select id="year"></select>
+<div class="chk"><input id="hide" type="checkbox"><label for="hide">Hide titles</label></div>
+<p class="note">Goodreads: counts books on the Read shelf with a Date Read. Letterboxd: uses the diary, by the date you watched.</p>
+</section>
+<section><div class="preview" id="out">Your receipt appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var items=[],kind='',canvas=null,txt='';
+var MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function load(t){
+  var r=parseCSV(t);if(r.length<2){UI.err('That does not look like an export.');return}
+  var h=r[0].map(function(x){return x.trim().toLowerCase()}),ix=function(n){return h.indexOf(n)};items=[];
+  if(ix('exclusive shelf')>=0&&ix('author')>=0){
+    kind='book';
+    for(var i=1;i<r.length;i++){var x=r[i];if((x[ix('exclusive shelf')]||'')!=='read') continue;
+      var m=(x[ix('date read')]||'').match(/^(\d{4})\/(\d\d)\/(\d\d)$/);if(!m) continue;
+      items.push({t:x[ix('title')],a:x[ix('author')],p:+x[ix('number of pages')]||0,r:+x[ix('my rating')]||0,d:new Date(+m[1],m[2]-1,+m[3])})}
+  } else if(ix('name')>=0&&(ix('watched date')>=0||ix('date')>=0)){
+    kind='film';var dc=ix('watched date')>=0?ix('watched date'):ix('date');
+    for(var j=1;j<r.length;j++){var y=r[j],mm=(y[dc]||'').match(/^(\d{4})-(\d\d)-(\d\d)$/);if(!mm) continue;
+      items.push({t:y[ix('name')],y:+y[ix('year')]||0,r:parseFloat(y[ix('rating')])||0,rw:/yes/i.test(y[ix('rewatch')]||''),d:new Date(+mm[1],mm[2]-1,+mm[3])})}
+  } else {UI.err('Could not tell if this is Goodreads or Letterboxd. Expected a library export or diary.csv.');return}
+  if(!items.length){UI.err('No dated entries found. Goodreads needs a Date Read on the Read shelf.');return}
+  UI.err('');var ys={};items.forEach(function(a){ys[a.d.getFullYear()]=1});
+  var s=$('year');s.textContent='';Object.keys(ys).sort().reverse().forEach(function(y){var o=document.createElement('option');o.value=y;o.textContent=y;s.appendChild(o)});
+  run();
+}
+function topN(o,n){return Object.keys(o).sort(function(a,b){return o[b]-o[a]}).slice(0,n)}
+function cut(s,n){s=String(s||'');return s.length>n?s.slice(0,n-1)+'...':s}
+function run(){
+  var y=+$('year').value,A=items.filter(function(a){return a.d.getFullYear()===y}),hide=$('hide').checked;if(!A.length) return;
+  var rated=A.filter(function(a){return a.r>0}),avg=rated.length?rated.reduce(function(s,a){return s+a.r},0)/rated.length:0,five=A.filter(function(a){return a.r===5}).length,mo={};
+  A.forEach(function(a){mo[a.d.getMonth()]=(mo[a.d.getMonth()]||0)+1});var bm=+topN(mo,1)[0];
+  var L=[{t:'c',l:kind==='book'?'READING RECEIPT':'FILM RECEIPT',cls:'b big'},{t:'c',l:String(y),cls:'m'},{t:'sep'}];
+  if(kind==='book'){
+    var pages=A.reduce(function(s,a){return s+a.p},0),lg=A.slice().sort(function(a,b){return b.p-a.p})[0],au={};A.forEach(function(a){au[a.a]=(au[a.a]||0)+1});var ta=topN(au,1)[0];
+    L.push({t:'r',l:'BOOKS READ',r:String(A.length)},{t:'r',l:'PAGES',r:pages.toLocaleString('en-US')},{t:'r',l:'AVERAGE RATING',r:avg?avg.toFixed(2):'n/a'},{t:'r',l:'FIVE STARS',r:String(five)},{t:'r',l:'BUSIEST MONTH',r:MN[bm]+' ('+mo[bm]+')'},{t:'sep'},
+      {t:'r',l:'LONGEST BOOK',r:lg.p?lg.p+' pp':'n/a'},{t:'c',l:hide?'(title hidden)':cut(lg.t,36),cls:'m'},{t:'r',l:'MOST READ AUTHOR',r:au[ta]+' books'},{t:'c',l:hide?'(author hidden)':cut(ta,36),cls:'m'});
+    L.push({t:'sep'},{t:'r',l:'TOTAL',r:A.length+' books',cls:'b big'});
+  } else {
+    var rw=A.filter(function(a){return a.rw}).length,yrs=A.filter(function(a){return a.y}),old=yrs.slice().sort(function(a,b){return a.y-b.y})[0],nw=yrs.slice().sort(function(a,b){return b.y-a.y})[0];
+    L.push({t:'r',l:'FILMS LOGGED',r:String(A.length)},{t:'r',l:'REWATCHES',r:String(rw)},{t:'r',l:'AVERAGE RATING',r:avg?avg.toFixed(2):'n/a'},{t:'r',l:'FIVE STARS',r:String(five)},{t:'r',l:'BUSIEST MONTH',r:MN[bm]+' ('+mo[bm]+')'},{t:'sep'});
+    if(old) L.push({t:'r',l:'OLDEST FILM',r:String(old.y)},{t:'c',l:hide?'(title hidden)':cut(old.t,36),cls:'m'},{t:'r',l:'NEWEST FILM',r:String(nw.y)},{t:'c',l:hide?'(title hidden)':cut(nw.t,36),cls:'m'});
+    L.push({t:'sep'},{t:'r',l:'TOTAL',r:A.length+' films',cls:'b big'});
+  }
+  L.push({t:'sep'},{t:'c',l:'Thank you, come read again.',cls:'b'},{t:'c',l:'Made with Shelf Receipt',cls:'m'});
+  canvas=Card.receipt(L);Card.show($('out'),canvas,440);txt=Card.receiptText(L);$('png').disabled=$('copy').disabled=false;
+}
+function sampleBooks(){
+  var o=['Book Id,Title,Author,My Rating,Number of Pages,Date Read,Exclusive Shelf'],A=['Ada Quill','Ben Moor','Cleo Ash','Dev Rao'],y=new Date().getFullYear();
+  for(var i=0;i<34;i++) o.push([i,'"Sample Book '+(i+1)+'"',A[i%4],(i%5)+1,180+(i*37)%420,y+'/'+String(1+i%12).padStart(2,'0')+'/'+String(1+i%27).padStart(2,'0'),'read'].join(','));
+  return o.join('\n');
+}
+function sampleFilms(){
+  var o=['Date,Name,Year,Letterboxd URI,Rating,Rewatch,Tags,Watched Date'],y=new Date().getFullYear();
+  for(var i=0;i<80;i++){var d=y+'-'+String(1+i%12).padStart(2,'0')+'-'+String(1+i%27).padStart(2,'0');o.push([d,'"Sample Film '+(i+1)+'"',1950+(i*7)%74,'x',((i%10)+1)/2,i%9===0?'Yes':'','',d].join(','))}
+  return o.join('\n');
+}
+UI.dropzone('drop','file',load);
+$('sbook').addEventListener('click',function(){load(sampleBooks())});
+$('sfilm').addEventListener('click',function(){load(sampleFilms())});
+['year','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'shelf-receipt.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

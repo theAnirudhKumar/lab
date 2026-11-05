@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Listening Receipt</title><meta name="description" content="Your Spotify listening history as a receipt.">
+<style>:root{--bg:#f4f1ea;--ink:#1c1b19;--mute:#6f6a60;--card:#fffdf8;--line:#d9d3c5;--accent:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--ink:#ece8de;--mute:#9a9486;--card:#1f1e1b;--line:#37342d;--accent:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 24px;max-width:58ch}
+.grid{display:grid;gap:24px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:minmax(0,1fr) 420px;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;transition:.15s}
+.drop.over,.drop:hover,.drop:focus{border-color:var(--accent);outline:none}
+.drop strong{display:block;font-size:18px}
+.drop span{color:var(--mute);font-size:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input[type=number],input[type=text],input[type=date],input[type=color],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=color]{padding:2px;height:40px}
+input[type=range]{width:100%}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:14px}
+.chk label{margin:0;color:var(--ink)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:9px 14px}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.note{font-size:13px;color:var(--mute);margin-top:14px}
+.err{color:#b91c1c;font-size:14px;margin-top:10px;min-height:1px}
+.preview{min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--mute);text-align:center}
+a{color:var(--accent)}
+.priv{font-size:13px;color:var(--mute);margin-top:28px;border-top:1px solid var(--line);padding-top:14px}
+</style></head>
+<body><main>
+<h1>Listening Receipt</h1>
+<p class="sub">Your Spotify listening as a receipt: hours, top artists, top tracks and how much of it happened after midnight. Read in your browser, never uploaded.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose Spotify history files"><strong>Drop your Streaming_History_Audio .json files</strong><span>Spotify: Account, Privacy, Download your data, choose Extended streaming history. Select all the audio files. Or click to choose.</span><input id="file" type="file" accept=".json" multiple hidden></div>
+<div class="btns"><button id="sample">Try with sample data</button></div><div class="err" id="err" role="alert"></div>
+<label for="year">Year</label><select id="year"></select>
+<div class="chk"><input id="hide" type="checkbox"><label for="hide">Hide artist and track names</label></div>
+<p class="note">Counts plays of 30 seconds or more. Podcasts and videos are left out. Times use your local time zone.</p>
+</section>
+<section><div class="preview" id="out">Your receipt appears here.</div><div class="btns" style="justify-content:center"><button class="primary" id="png" disabled>Download image</button><button id="copy" disabled>Copy text</button></div></section>
+</div>
+<p class="priv">Runs entirely in your browser. Nothing is uploaded and there is no tracking.</p>
+<script>
+var $=function(id){return document.getElementById(id)};
+var DAY=864e5;
+function parseCSV(t){
+  var out=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){var c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c==='"') q=true; else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n') i++; row.push(f);f=''; if(row.length>1||row[0]!=='') out.push(row); row=[] }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row)}
+  return out;
+}
+function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shuffled(a,r){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(r()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+
+var Card=(function(){
+var MONO='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', SANS='system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+function mk(w,h,sc){var c=document.createElement('canvas');c.width=w*sc;c.height=h*sc;var g=c.getContext('2d');g.scale(sc,sc);return {c:c,g:g}}
+function wrapText(g,text,maxW){
+  var words=String(text).split(' '),lines=[],cur='';
+  words.forEach(function(w){var t=cur?cur+' '+w:w; if(g.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t});
+  if(cur) lines.push(cur); return lines;
+}
+/* lines: [{t:'sep'|'c'|'r', l, r, cls:'b big m'}] */
+function receipt(lines){
+  var sc=2,w=440,lh=22,pad=28;
+  var h=pad*2+lines.reduce(function(a,x){return a+(x.t==='sep'?14:(/big/.test(x.cls||'')?30:lh))},0);
+  var m=mk(w,h,sc),g=m.g; g.fillStyle='#fffefa'; g.fillRect(0,0,w,h);
+  var y=pad;
+  lines.forEach(function(x){
+    if(x.t==='sep'){g.strokeStyle='#1c1b19';g.setLineDash([4,3]);g.beginPath();g.moveTo(pad,y+5);g.lineTo(w-pad,y+5);g.stroke();y+=14;return}
+    var big=/big/.test(x.cls||''),bold=/\bb\b/.test(x.cls||''),mute=/\bm\b/.test(x.cls||'');
+    g.font=(bold?'700 ':'400 ')+(big?'20px ':'13px ')+MONO; g.fillStyle=mute?'#6f6a60':'#1c1b19'; y+=big?22:16;
+    if(x.t==='c'){g.textAlign='center';g.fillText(x.l,w/2,y)}
+    else{g.textAlign='left';g.fillText(x.l,pad,y);g.textAlign='right';g.fillText(x.r,w-pad,y)}
+    y+=big?8:6;
+  });
+  return m.c;
+}
+function receiptText(lines){
+  var W=40;
+  return lines.map(function(x){
+    if(x.t==='sep') return '-'.repeat(W);
+    if(x.t==='c'){return ' '.repeat(Math.max(0,Math.floor((W-x.l.length)/2)))+x.l}
+    return x.l+' '.repeat(Math.max(1,W-x.l.length-x.r.length))+x.r;
+  }).join('\n');
+}
+/* o: {kicker, headline, sub, stats:[{v,l}] (max 4), footer, hue} */
+function poster(o){
+  var W=1080,H=1350,m=mk(W,H,1),g=m.g,h=o.hue==null?20:o.hue;
+  var gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,'hsl('+h+',65%,13%)'); gr.addColorStop(1,'hsl('+((h+50)%360)+',70%,30%)');
+  g.fillStyle=gr; g.fillRect(0,0,W,H);
+  g.globalAlpha=.1; g.fillStyle='#fff'; g.beginPath(); g.arc(W-100,170,270,0,7); g.fill(); g.beginPath(); g.arc(60,H-300,210,0,7); g.fill(); g.globalAlpha=1;
+  g.textBaseline='alphabetic'; g.textAlign='left'; g.fillStyle='#fff';
+  g.font='700 30px '+SANS; g.globalAlpha=.8; g.fillText(String(o.kicker||'').toUpperCase(),80,120); g.globalAlpha=1;
+  var size=112,lines;
+  for(;;){g.font='800 '+size+'px '+SANS; lines=wrapText(g,o.headline,W-160); if(lines.length<=4||size<=52) break; size-=6}
+  var y=270; lines.forEach(function(l){g.fillText(l,80,y); y+=size*1.1});
+  if(o.sub){g.font='400 40px '+SANS; g.globalAlpha=.85; y+=14; wrapText(g,o.sub,W-160).slice(0,3).forEach(function(l){g.fillText(l,80,y);y+=52}); g.globalAlpha=1}
+  var st=(o.stats||[]).slice(0,4), bw=(W-160-30)/2, bh=190;
+  st.forEach(function(s,i){
+    var bx=80+(i%2)*(bw+30), by=H-510+Math.floor(i/2)*(bh+24);
+    g.fillStyle='rgba(255,255,255,.12)'; g.beginPath(); if(g.roundRect) g.roundRect(bx,by,bw,bh,24); else g.rect(bx,by,bw,bh); g.fill();
+    g.fillStyle='#fff'; var vs=68; do{g.font='800 '+vs+'px '+SANS; vs-=4}while(g.measureText(String(s.v)).width>bw-48&&vs>28);
+    g.fillText(String(s.v),bx+24,by+98);
+    g.font='400 26px '+SANS; g.globalAlpha=.75; g.fillText(String(s.l).toUpperCase(),bx+24,by+150); g.globalAlpha=1;
+  });
+  g.font='500 28px '+SANS; g.globalAlpha=.7; g.fillStyle='#fff'; g.fillText(o.footer||'',80,H-44); g.globalAlpha=1;
+  return m.c;
+}
+function show(el,canvas,maxW){
+  el.textContent=''; canvas.style.cssText='width:100%;max-width:'+(maxW||440)+'px;height:auto;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.25);display:block;margin:0 auto';
+  el.appendChild(canvas);
+}
+function download(canvas,name){var a=document.createElement('a');a.download=name||'share.png';a.href=canvas.toDataURL('image/png');a.click()}
+function copy(text,btn){
+  var old=btn.textContent;
+  (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(function(){btn.textContent='Copied'},function(){btn.textContent='Copy failed'});
+  setTimeout(function(){btn.textContent=old},1500);
+}
+return {receipt:receipt,receiptText:receiptText,poster:poster,show:show,download:download,copy:copy,wrapText:wrapText,MONO:MONO,SANS:SANS};
+})();
+var UI={
+  dropzone:function(dropId,fileId,cb,asText){
+    var drop=$(dropId),fi=$(fileId);
+    function take(files){if(!files||!files.length) return; if(asText===false){cb(files)} else {var r=new FileReader(); r.onload=function(){cb(String(r.result))}; r.onerror=function(){UI.err('Could not read that file.')}; r.readAsText(files[0])}}
+    drop.addEventListener('click',function(){fi.click()});
+    drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fi.click()}});
+    fi.addEventListener('change',function(){take(fi.files)});
+    ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+    ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+    drop.addEventListener('drop',function(e){take(e.dataTransfer.files)});
+  },
+  err:function(m){var e=$('err'); if(e) e.textContent=m||''},
+  startOfWeek:function(d){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x}
+};
+
+var plays=[],canvas=null,txt='';
+async function load(files){
+  UI.err('');plays=[];
+  try{for(var i=0;i<files.length;i++){var j=JSON.parse(await files[i].text());if(!Array.isArray(j)) continue;
+    j.forEach(function(x){var tr=x.master_metadata_track_name,ar=x.master_metadata_album_artist_name,ms=x.ms_played,d=new Date(x.ts);
+      if(tr&&ar&&ms>=30000&&!isNaN(d)) plays.push({d:d,ms:ms,t:tr,a:ar})})}}
+  catch(e){UI.err('Could not read those files. Use the Streaming_History_Audio .json files.');return}
+  if(!plays.length){UI.err('No music plays found. Is this the Extended streaming history?');return}
+  fill();run();
+}
+function fill(){var ys={};plays.forEach(function(p){ys[p.d.getFullYear()]=1});var s=$('year');s.textContent='';Object.keys(ys).sort().reverse().forEach(function(y){var o=document.createElement('option');o.value=y;o.textContent=y;s.appendChild(o)})}
+function topN(o,n){return Object.keys(o).sort(function(a,b){return o[b]-o[a]}).slice(0,n)}
+function cut(s,n){s=String(s);return s.length>n?s.slice(0,n-1)+'...':s}
+function run(){
+  var y=+$('year').value,P=plays.filter(function(p){return p.d.getFullYear()===y}),hide=$('hide').checked;if(!P.length) return;
+  var ms=0,late=0,art={},trk={},cnt={},day={};
+  P.forEach(function(p){ms+=p.ms;if(p.d.getHours()<5) late+=p.ms;art[p.a]=(art[p.a]||0)+p.ms;var k=p.a+' | '+p.t;trk[k]=(trk[k]||0)+1;day[p.d.toDateString()]=(day[p.d.toDateString()]||0)+p.ms});
+  var hrs=ms/36e5,ta=topN(art,5),tt=topN(trk,3),bd=topN(day,1)[0];
+  var L=[{t:'c',l:'LISTENING RECEIPT',cls:'b big'},{t:'c',l:String(y),cls:'m'},{t:'sep'},
+   {t:'r',l:'PLAYS',r:P.length.toLocaleString('en-US')},{t:'r',l:'HOURS LISTENED',r:Math.round(hrs).toLocaleString('en-US')},{t:'r',l:'DAYS, NONSTOP',r:(hrs/24).toFixed(1)},
+   {t:'r',l:'DIFFERENT ARTISTS',r:Object.keys(art).length.toLocaleString('en-US')},{t:'r',l:'AFTER MIDNIGHT (0-5 AM)',r:Math.round(late/ms*100)+'%'},{t:'r',l:'BIGGEST DAY',r:(day[bd]/36e5).toFixed(1)+' h'},{t:'sep'},{t:'c',l:'TOP ARTISTS',cls:'b'}];
+  ta.forEach(function(a,i){L.push({t:'r',l:hide?'Artist '+(i+1):cut(a,24),r:Math.round(art[a]/36e5)+' h'})});
+  L.push({t:'sep'},{t:'c',l:'MOST PLAYED TRACKS',cls:'b'});
+  tt.forEach(function(k,i){L.push({t:'r',l:hide?'Track '+(i+1):cut(k.split(' | ').slice(1).join(' | '),26),r:trk[k]+' plays'})});
+  L.push({t:'sep'},{t:'r',l:'TOTAL',r:Math.round(hrs)+' h',cls:'b big'},{t:'sep'},{t:'c',l:'Keep the volume up.',cls:'b'},{t:'c',l:'Made with Listening Receipt',cls:'m'});
+  canvas=Card.receipt(L);Card.show($('out'),canvas,440);txt=Card.receiptText(L);$('png').disabled=$('copy').disabled=false;
+}
+function sample(){
+  var A=['Aster Vale','Neon Harbor','The Quiet Fields','Marlow','Sunday Static','Kite & Co'],o=[],t0=Date.now()-300*DAY,r=mulberry(7);
+  for(var i=0;i<4000;i++){var d=new Date(t0+i*(300*DAY/4000)+Math.floor(r()*86400000)%(86400000)),a=A[Math.floor(Math.pow(r(),1.8)*6)];
+    o.push({ts:d.toISOString(),ms_played:30000+Math.floor(r()*240000),master_metadata_track_name:a+' Song '+(1+Math.floor(r()*5)),master_metadata_album_artist_name:a})}
+  return new File([JSON.stringify(o)],'Streaming_History_Audio_sample.json');
+}
+UI.dropzone('drop','file',load,false);
+$('sample').addEventListener('click',function(){load([sample()])});
+['year','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'listening-receipt.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>
+
+</main></body></html>

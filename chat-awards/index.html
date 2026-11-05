@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Group Chat Awards</title><meta name="description" content="Drop in a WhatsApp chat export and hand out the awards.">
+<style>:root{--bg:#f4f1ea;--ink:#1c1b19;--mute:#6f6a60;--card:#fffdf8;--line:#d9d3c5;--accent:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--ink:#ece8de;--mute:#9a9486;--card:#1f1e1b;--line:#37342d;--accent:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 24px;max-width:58ch}
+.grid{display:grid;gap:24px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:minmax(0,1fr) 420px;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;transition:.15s}
+.drop.over,.drop:hover,.drop:focus{border-color:var(--accent);outline:none}
+.drop strong{display:block;font-size:18px}
+.drop span{color:var(--mute);font-size:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input[type=number],input[type=text],input[type=date],input[type=color],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=color]{padding:2px;height:40px}
+input[type=range]{width:100%}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:14px}
+.chk label{margin:0;color:var(--ink)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:9px 14px}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.note{font-size:13px;color:var(--mute);margin-top:14px}
+.err{color:#b91c1c;font-size:14px;margin-top:10px;min-height:1px}
+.preview{min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--mute);text-align:center}
+a{color:var(--accent)}
+.priv{font-size:13px;color:var(--mute);margin-top:28px;border-top:1px solid var(--line);padding-top:14px}
+</style></head>
+<body><main>
+<h1>Group Chat Awards</h1>
+<p class="sub">Drop in a WhatsApp chat export and hand out the awards: the Chatterbox, the Ghost, the Night Owl and more. Read in your browser. The chat never leaves your device.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a chat export"><strong>Drop a WhatsApp chat .txt here</strong><span>WhatsApp: open the chat, menu, More, Export chat, Without media. Or click to choose.</span><input id="file" type="file" accept=".txt,text/plain" hidden></div>
+<div class="btns"><button id="sample">Try with a sample chat</button></div><div class="err" id="err" role="alert"></div>
+<div class="chk"><input id="hide" type="checkbox" checked><label for="hide">Hide real names (Person 1, Person 2...)</label></div>
+<p class="note">Awards need a few messages per person. A reply means a message from a different person within 30 minutes. A silence is a gap of 6 hours or more. This is for fun, so be kind when you post it, and check with the group first.</p>
+</section>
+<section><div class="preview" id="out">Your awards appear here.</div><div class="btns" style="justify-content:center"><button class="primary" id="png" disabled>Download image</button><button id="copy" disabled>Copy text</button></div></section>
+</div>
+<p class="priv">Runs entirely in your browser. Nothing is uploaded and there is no tracking.</p>
+<script>
+var $=function(id){return document.getElementById(id)};
+var DAY=864e5;
+function parseCSV(t){
+  var out=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){var c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c==='"') q=true; else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n') i++; row.push(f);f=''; if(row.length>1||row[0]!=='') out.push(row); row=[] }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row)}
+  return out;
+}
+function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shuffled(a,r){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(r()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+
+var Card=(function(){
+var MONO='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', SANS='system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+function mk(w,h,sc){var c=document.createElement('canvas');c.width=w*sc;c.height=h*sc;var g=c.getContext('2d');g.scale(sc,sc);return {c:c,g:g}}
+function wrapText(g,text,maxW){
+  var words=String(text).split(' '),lines=[],cur='';
+  words.forEach(function(w){var t=cur?cur+' '+w:w; if(g.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t});
+  if(cur) lines.push(cur); return lines;
+}
+/* lines: [{t:'sep'|'c'|'r', l, r, cls:'b big m'}] */
+function receipt(lines){
+  var sc=2,w=440,lh=22,pad=28;
+  var h=pad*2+lines.reduce(function(a,x){return a+(x.t==='sep'?14:(/big/.test(x.cls||'')?30:lh))},0);
+  var m=mk(w,h,sc),g=m.g; g.fillStyle='#fffefa'; g.fillRect(0,0,w,h);
+  var y=pad;
+  lines.forEach(function(x){
+    if(x.t==='sep'){g.strokeStyle='#1c1b19';g.setLineDash([4,3]);g.beginPath();g.moveTo(pad,y+5);g.lineTo(w-pad,y+5);g.stroke();y+=14;return}
+    var big=/big/.test(x.cls||''),bold=/\bb\b/.test(x.cls||''),mute=/\bm\b/.test(x.cls||'');
+    g.font=(bold?'700 ':'400 ')+(big?'20px ':'13px ')+MONO; g.fillStyle=mute?'#6f6a60':'#1c1b19'; y+=big?22:16;
+    if(x.t==='c'){g.textAlign='center';g.fillText(x.l,w/2,y)}
+    else{g.textAlign='left';g.fillText(x.l,pad,y);g.textAlign='right';g.fillText(x.r,w-pad,y)}
+    y+=big?8:6;
+  });
+  return m.c;
+}
+function receiptText(lines){
+  var W=40;
+  return lines.map(function(x){
+    if(x.t==='sep') return '-'.repeat(W);
+    if(x.t==='c'){return ' '.repeat(Math.max(0,Math.floor((W-x.l.length)/2)))+x.l}
+    return x.l+' '.repeat(Math.max(1,W-x.l.length-x.r.length))+x.r;
+  }).join('\n');
+}
+/* o: {kicker, headline, sub, stats:[{v,l}] (max 4), footer, hue} */
+function poster(o){
+  var W=1080,H=1350,m=mk(W,H,1),g=m.g,h=o.hue==null?20:o.hue;
+  var gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,'hsl('+h+',65%,13%)'); gr.addColorStop(1,'hsl('+((h+50)%360)+',70%,30%)');
+  g.fillStyle=gr; g.fillRect(0,0,W,H);
+  g.globalAlpha=.1; g.fillStyle='#fff'; g.beginPath(); g.arc(W-100,170,270,0,7); g.fill(); g.beginPath(); g.arc(60,H-300,210,0,7); g.fill(); g.globalAlpha=1;
+  g.textBaseline='alphabetic'; g.textAlign='left'; g.fillStyle='#fff';
+  g.font='700 30px '+SANS; g.globalAlpha=.8; g.fillText(String(o.kicker||'').toUpperCase(),80,120); g.globalAlpha=1;
+  var size=112,lines;
+  for(;;){g.font='800 '+size+'px '+SANS; lines=wrapText(g,o.headline,W-160); if(lines.length<=4||size<=52) break; size-=6}
+  var y=270; lines.forEach(function(l){g.fillText(l,80,y); y+=size*1.1});
+  if(o.sub){g.font='400 40px '+SANS; g.globalAlpha=.85; y+=14; wrapText(g,o.sub,W-160).slice(0,3).forEach(function(l){g.fillText(l,80,y);y+=52}); g.globalAlpha=1}
+  var st=(o.stats||[]).slice(0,4), bw=(W-160-30)/2, bh=190;
+  st.forEach(function(s,i){
+    var bx=80+(i%2)*(bw+30), by=H-510+Math.floor(i/2)*(bh+24);
+    g.fillStyle='rgba(255,255,255,.12)'; g.beginPath(); if(g.roundRect) g.roundRect(bx,by,bw,bh,24); else g.rect(bx,by,bw,bh); g.fill();
+    g.fillStyle='#fff'; var vs=68; do{g.font='800 '+vs+'px '+SANS; vs-=4}while(g.measureText(String(s.v)).width>bw-48&&vs>28);
+    g.fillText(String(s.v),bx+24,by+98);
+    g.font='400 26px '+SANS; g.globalAlpha=.75; g.fillText(String(s.l).toUpperCase(),bx+24,by+150); g.globalAlpha=1;
+  });
+  g.font='500 28px '+SANS; g.globalAlpha=.7; g.fillStyle='#fff'; g.fillText(o.footer||'',80,H-44); g.globalAlpha=1;
+  return m.c;
+}
+function show(el,canvas,maxW){
+  el.textContent=''; canvas.style.cssText='width:100%;max-width:'+(maxW||440)+'px;height:auto;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.25);display:block;margin:0 auto';
+  el.appendChild(canvas);
+}
+function download(canvas,name){var a=document.createElement('a');a.download=name||'share.png';a.href=canvas.toDataURL('image/png');a.click()}
+function copy(text,btn){
+  var old=btn.textContent;
+  (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(function(){btn.textContent='Copied'},function(){btn.textContent='Copy failed'});
+  setTimeout(function(){btn.textContent=old},1500);
+}
+return {receipt:receipt,receiptText:receiptText,poster:poster,show:show,download:download,copy:copy,wrapText:wrapText,MONO:MONO,SANS:SANS};
+})();
+var UI={
+  dropzone:function(dropId,fileId,cb,asText){
+    var drop=$(dropId),fi=$(fileId);
+    function take(files){if(!files||!files.length) return; if(asText===false){cb(files)} else {var r=new FileReader(); r.onload=function(){cb(String(r.result))}; r.onerror=function(){UI.err('Could not read that file.')}; r.readAsText(files[0])}}
+    drop.addEventListener('click',function(){fi.click()});
+    drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fi.click()}});
+    fi.addEventListener('change',function(){take(fi.files)});
+    ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+    ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+    drop.addEventListener('drop',function(e){take(e.dataTransfer.files)});
+  },
+  err:function(m){var e=$('err'); if(e) e.textContent=m||''},
+  startOfWeek:function(d){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x}
+};
+
+var msgs=[],canvas=null,txt='';
+var RA=/^‎?(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4}),? (\d{1,2})[:.](\d{2})(?::\d{2})?\s?([APap]\.?[Mm]\.?)? - ([^:]+): (.*)$/;
+var RI=/^‎?\[(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4}),? (\d{1,2})[:.](\d{2})(?::\d{2})?\s?([APap][Mm])?\] ([^:]+): (.*)$/;
+function parse(t){
+  var lines=t.replace(/\r/g,'').split('\n'),raw=[],cur=null,dayFirst=null;
+  lines.forEach(function(l){
+    var m=RA.exec(l)||RI.exec(l);
+    if(m){cur={a:+m[1],b:+m[2],y:+m[3],h:+m[4],mi:+m[5],ap:(m[6]||'').toLowerCase().replace(/\./g,''),n:m[7].trim(),x:m[8]};raw.push(cur);
+      if(+m[1]>12) dayFirst=true; else if(+m[2]>12&&dayFirst===null) dayFirst=false}
+    else if(cur&&l) cur.x+=' '+l;
+  });
+  if(dayFirst===null) dayFirst=false;
+  return raw.map(function(r){
+    var d=dayFirst?r.a:r.b,mo=dayFirst?r.b:r.a,y=r.y<100?2000+r.y:r.y,h=r.h;
+    if(r.ap==='pm'&&h<12) h+=12; if(r.ap==='am'&&h===12) h=0;
+    return {t:new Date(y,mo-1,d,h,r.mi),n:r.n,x:r.x};
+  }).filter(function(m){return !isNaN(m.t)}).sort(function(a,b){return a.t-b.t});
+}
+function median(a){if(!a.length) return 0;a=a.slice().sort(function(x,y){return x-y});return a[Math.floor(a.length/2)]}
+function words(s){return (s.match(/\S+/g)||[]).length}
+function load(t){
+  msgs=parse(t);
+  if(msgs.length<20){UI.err('Not enough messages found. Is this a WhatsApp export (.txt)?');return}
+  UI.err('');run();
+}
+function dur(ms){var m=Math.round(ms/6e4);return m<60?m+' min':(m/60).toFixed(1)+' h'}
+function run(){
+  if(msgs.length<20) return;
+  var S={},order=[];
+  msgs.forEach(function(m,i){
+    var s=S[m.n]; if(!s){s=S[m.n]={n:m.n,c:0,w:0,night:0,early:0,media:0,q:0,laugh:0,start:0,kill:0,rep:[]};order.push(m.n)}
+    s.c++;s.w+=words(m.x);var h=m.t.getHours();if(h<5)s.night++;else if(h<8)s.early++;
+    if(/<media omitted>|image omitted|video omitted|sticker omitted|\.jpg|\.jpeg/i.test(m.x)) s.media++;
+    if(m.x.indexOf('?')>=0) s.q++; if(/ha(ha)+|lol|lmao|\u{1F602}|\u{1F923}/iu.test(m.x)) s.laugh++;
+    var p=msgs[i-1];
+    if(!p||m.t-p.t>=6*36e5) s.start++;
+    if(p&&p.n!==m.n&&m.t-p.t<30*6e4) s.rep.push(m.t-p.t);
+    var nx=msgs[i+1]; if(!nx||nx.t-m.t>=6*36e5) s.kill++;
+  });
+  var min=Math.max(5,Math.min(20,Math.round(msgs.length*0.02))),P=order.map(function(n){return S[n]}).filter(function(s){return s.c>=min});
+  if(P.length<2){UI.err('Not enough active people to hand out awards.');return}
+  var hide=$('hide').checked,idx={};order.forEach(function(n,i){idx[n]=i+1});
+  function nm(s){return hide?'Person '+idx[s.n]:(s.n.length>16?s.n.slice(0,15)+'...':s.n)}
+  function best(f,asc){var b=null;P.forEach(function(s){var v=f(s);if(v==null||isNaN(v)) return;if(b===null||(asc?v<b.v:v>b.v)) b={s:s,v:v}});return b}
+  var AW=[
+   ['THE CHATTERBOX',best(function(s){return s.c}),function(v){return v.toLocaleString('en-US')+' messages'}],
+   ['THE ESSAYIST',best(function(s){return s.w/s.c}),function(v){return v.toFixed(1)+' words per message'}],
+   ['THE ONE-WORD WONDER',best(function(s){return s.w/s.c},true),function(v){return v.toFixed(1)+' words per message'}],
+   ['THE NIGHT OWL',best(function(s){return s.night/s.c}),function(v){return Math.round(v*100)+'% after midnight'}],
+   ['THE EARLY BIRD',best(function(s){return s.early/s.c}),function(v){return Math.round(v*100)+'% between 5 and 8 am'}],
+   ['THE STARTER',best(function(s){return s.start}),function(v){return v+' conversations opened'}],
+   ['THE SILENCER',best(function(s){return s.kill}),function(v){return v+' last words before silence'}],
+   ['THE PHOTOGRAPHER',best(function(s){return s.media}),function(v){return v+' photos and clips'}],
+   ['THE INTERROGATOR',best(function(s){return s.q/s.c}),function(v){return Math.round(v*100)+'% of messages ask something'}],
+   ['THE LAUGH TRACK',best(function(s){return s.laugh}),function(v){return v+' laughing messages'}],
+   ['THE FASTEST REPLY',best(function(s){return s.rep.length>=5?median(s.rep):null},true),function(v){return 'median '+dur(v)}],
+   ['THE GHOST',best(function(s){return s.rep.length>=5?median(s.rep):null}),function(v){return 'median '+dur(v)}]
+  ].filter(function(a){return a[1]&&(a[0]!=='THE PHOTOGRAPHER'||a[1].v>0)&&(a[0]!=='THE LAUGH TRACK'||a[1].v>0)});
+  var L=[{t:'c',l:'GROUP CHAT AWARDS',cls:'b big'},{t:'c',l:fmtDate(msgs[0].t)+' to '+fmtDate(msgs[msgs.length-1].t),cls:'m'},{t:'sep'},
+    {t:'r',l:'MESSAGES',r:msgs.length.toLocaleString('en-US')},{t:'r',l:'PEOPLE',r:String(order.length)},{t:'sep'}];
+  AW.forEach(function(a){L.push({t:'r',l:a[0],r:nm(a[1].s),cls:'b'},{t:'c',l:a[2](a[1].v),cls:'m'})});
+  L.push({t:'sep'},{t:'c',l:'No friends were harmed.',cls:'b'},{t:'c',l:'Made with Group Chat Awards',cls:'m'});
+  canvas=Card.receipt(L);Card.show($('out'),canvas,440);txt=Card.receiptText(L);$('png').disabled=$('copy').disabled=false;
+}
+function sample(){
+  var N=['Ana','Ben','Chloe','Dev','Eli'],r=mulberry(3),o=[],t=new Date(2026,0,3,9,0).getTime();
+  for(var i=0;i<900;i++){
+    t+=r()<0.06?(7+Math.floor(r()*10))*36e5:Math.floor(r()*r()*40)*6e4+30000;
+    var d=new Date(t),who=N[Math.floor(Math.pow(r(),1.5)*5)],h=d.getHours(),
+      txt=r()<0.1?'<Media omitted>':r()<0.2?'haha':r()<0.15?'wait what?':'ok see you there then maybe around '+(1+Math.floor(r()*11))+' or so';
+    var hh=h%12||12,ap=h<12?'AM':'PM';
+    o.push((d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2)+', '+hh+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap+' - '+who+': '+txt);
+  }
+  return o.join('\n');
+}
+UI.dropzone('drop','file',load);
+$('sample').addEventListener('click',function(){load(sample())});
+$('hide').addEventListener('input',run);
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'group-chat-awards.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>
+
+</main></body></html>

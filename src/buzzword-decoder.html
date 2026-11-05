@@ -1,0 +1,99 @@
+<!-- title: Buzzword Decoder | A daily five-question game: translate corporate speak into plain English. -->
+<h1>Buzzword Decoder</h1>
+<p class="sub">Five corporate phrases a day. Pick what they actually mean. Same five for everyone, so you can compare.</p>
+<style>
+.q{font-size:clamp(22px,4vw,30px);font-weight:800;line-height:1.2;margin:6px 0 16px}
+.opt{display:block;width:100%;text-align:left;margin:8px 0;padding:12px 14px;font-size:16px}
+.opt.good{background:#16a34a;border-color:#16a34a;color:#fff}
+.opt.bad{background:#dc2626;border-color:#dc2626;color:#fff}
+.prog{color:var(--mute);font-size:14px}
+.grid1{max-width:640px;margin:0 auto}
+.res{font-size:40px;letter-spacing:4px;text-align:center;margin:10px 0}
+</style>
+<div class="grid1"><section class="card" id="game"></section>
+<div class="btns" style="justify-content:center"><button class="primary" id="share" style="display:none">Copy result</button><button id="png" style="display:none">Download image</button></div>
+<p class="note" id="stats" style="text-align:center"></p></div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var D=[
+["Let's circle back.","We will not discuss this again unless someone forces it.","Let's walk around the building.","I need time to think of a better answer.","Please summarise this in writing."],
+["Let's take this offline.","Stop talking about it here, in front of everyone.","Let's disconnect from the internet.","Let's continue on a different platform.","Let's make a recording of it."],
+["Per my last email.","You did not read my last email.","As the previous email said, I am wrong.","I have deleted my last email.","Please reply to my last email faster."],
+["I have a hard stop.","I am leaving at the time written on the invite.","I cannot stop talking about this.","This meeting is very difficult.","I am physically unable to continue."],
+["Low-hanging fruit.","The easiest wins, done first.","A snack for the team offsite.","Work nobody wants to do.","The riskiest option on the table."],
+["Move the needle.","Make a measurable difference.","Sew something.","Check the dashboard again.","Find the problem with the equipment."],
+["Boil the ocean.","Try to do far too much at once.","Make a very large cup of tea.","Study climate risk.","Start from first principles."],
+["Bandwidth.","How much time and energy someone has left.","Internet speed.","The size of the budget.","The number of people on the team."],
+["Deep dive.","A thorough look at the details.","A team swimming trip.","A very long meeting.","A review of the cloud bill."],
+["Touch base.","A short check-in.","A baseball reference for sales.","A formal handover.","A complaint about progress."],
+["Synergy.","Two things together doing more than separately, supposedly.","A merger announcement.","A team-building exercise.","A reduction in headcount."],
+["Going forward.","From now on, and also nothing changes about the past.","In the future, if we survive.","A warning of layoffs.","We are done now."],
+["Let's put a pin in it.","Park this topic for later.","Make a decision now.","Escalate this to leadership.","Delete this from the plan."],
+["Ping me.","Message me.","Call the police.","Check on the server.","Increase the volume."],
+["Does that make sense?","Please tell me you agree so I can stop explaining.","I think you are confused.","I am confused myself.","Please find my errors."],
+["Alignment.","Everyone agrees, or at least has stopped arguing.","The office seating plan.","A tidy spreadsheet.","A new reporting line."],
+["Stakeholders.","Anyone who can complain about the outcome.","Shareholders only.","The people who do the work.","Customers only."],
+["Action items.","Things someone will be asked about next week.","Items for the legal team.","Tasks that are already done.","A to-do list for the next decade."],
+["Parking lot.","A list of topics we are not going to discuss.","Where the team will meet at lunch.","A place for car owners.","An overflow meeting room."],
+["Pivot.","Change direction because the first plan did not work.","Rotate the spreadsheet.","A promotion.","A type of chair."],
+["North star.","The single goal everyone is meant to follow.","A holiday destination.","A company mascot.","A new building."],
+["Scalable.","Will still work when there are many more users.","Easy to climb.","Cheap to run.","Made of fish."],
+["Best practice.","What some other company did and survived.","A law.","A thing written on a mug.","The opposite of worst practice."],
+["Take a step back.","Look at the whole picture, or stop arguing.","Physically move away.","Undo the last change.","Reverse the budget."],
+["Unpack that.","Explain what you meant.","Open the boxes.","Reduce the file size.","Stop talking."],
+["Value add.","A benefit someone hopes the client will notice.","A tax.","A discount.","An extra fee."],
+["Game changer.","Something the team thinks is quite good.","A new sport.","A board game for the offsite.","A defect."],
+["Leverage.","Use something you already have.","Borrow money.","Fire someone.","Sell the building."],
+["Ecosystem.","All the products and partners around a thing.","A forest.","A recycling policy.","The office plants."],
+["Run it up the flagpole.","Try the idea on senior people and see who salutes.","Celebrate the national day.","Share it with the whole company.","Test the building's wind speed."],
+["Tiger team.","A small group pulled together to fix one hard problem.","The sales team.","A cat charity.","The security guards."],
+["Ideate.","Think of ideas.","Take a vote.","Read a book.","Write a long document."],
+["Offsite.","A meeting away from the office.","A remote backup.","A cancelled meeting.","A tax haven."],
+["Circle the wagons.","Protect ourselves from criticism.","Start a road trip.","Order more chairs.","Call a customer."],
+["Double click on that.","Look more closely at that point.","Press the button twice.","Open the file.","Select all."],
+["I'm just going to jump in.","I am interrupting you.","I am late and eager.","I am about to leave.","I agree completely."],
+["Quick question.","A question that will take 40 minutes.","A question with a yes or no answer.","A question for later.","A question I already know the answer to."],
+["Can everyone see my screen?","Please confirm the thing I forgot to share.","Please turn off your cameras.","Please sign the document.","Please leave the call."],
+["Sorry, you're on mute.","Please say that again, now audibly.","Your microphone is broken forever.","Please hang up.","Speak more quietly."],
+["Reach out.","Contact.","Stretch your arm.","Offer help.","Give up."],
+["Wheelhouse.","The area someone is expert in.","A boat repair shop.","A circular office.","A place to store wheels."],
+["End of day.","Probably tomorrow morning.","Exactly 5 pm.","Midnight.","Never."],
+["Paradigm shift.","A big change in how things are done.","A schedule change.","A shift in the warehouse.","A new rota."],
+["Hit the ground running.","Be productive on day one with no training.","Start a charity run.","Arrive late.","Use the stairs."],
+["Thought leader.","Someone who posts a lot.","A person with unusual thoughts.","A professor.","The CEO."]
+];
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shuffle(a,r){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(r()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+var dayNo=Math.floor((Date.now()-new Date().getTimezoneOffset()*6e4)/DAY)-19000;
+var r0=rng(dayNo*7919+13),idx=shuffle(D.map(function(_,i){return i}),r0).slice(0,5);
+var qs=idx.map(function(i,k){var it=D[i],r=rng(dayNo*31+k),opts=shuffle([0,1,2,3],r);return {q:it[0],o:opts.map(function(n){return it[n+1]}),a:opts.indexOf(0)}});
+var key='bd-'+dayNo,st={a:[]},canvas=null;
+try{var s=localStorage.getItem(key); if(s) st=JSON.parse(s)}catch(e){}
+function save(){try{localStorage.setItem(key,JSON.stringify(st))}catch(e){}}
+function streak(){
+  var n=0,d=dayNo; try{ if(!localStorage.getItem('bd-'+d)) d--; while(localStorage.getItem('bd-'+d)&&JSON.parse(localStorage.getItem('bd-'+d)).a.length===5){n++;d--} }catch(e){} return n;
+}
+function grid(){return st.a.map(function(x,i){return x===qs[i].a?'🟩':'🟥'}).join('')}
+function score(){return st.a.filter(function(x,i){return x===qs[i].a}).length}
+function shareText(){return 'Buzzword Decoder #'+dayNo+' '+score()+'/5\n'+grid()}
+function draw(){
+  var g=$('game'); g.textContent='';
+  var i=st.a.length;
+  if(i>=5){
+    var h=document.createElement('div');h.innerHTML='<div class="prog">Done for today</div><div class="q">'+score()+' out of 5</div><div class="res">'+grid()+'</div>';g.appendChild(h);
+    $('share').style.display=$('png').style.display='inline-block';
+    $('stats').textContent='Streak: '+streak()+' day'+(streak()===1?'':'s')+'. A new set arrives tomorrow.';
+    canvas=Card.poster({kicker:'Buzzword Decoder #'+dayNo,headline:score()+' out of 5',sub:'I translated corporate speak into plain English.',stats:[{v:grid().length/2+' answers',l:'Played'},{v:streak()+' day',l:'Streak'}],footer:'Made with Buzzword Decoder',hue:215});
+    return;
+  }
+  var q=qs[i],pr=document.createElement('div');pr.className='prog';pr.textContent='Question '+(i+1)+' of 5';g.appendChild(pr);
+  var qq=document.createElement('div');qq.className='q';qq.textContent='"'+q.q.replace(/^"|"$/g,'')+'" means...';g.appendChild(qq);
+  q.o.forEach(function(t,k){var b=document.createElement('button');b.className='opt';b.textContent=t;b.addEventListener('click',function(){
+    Array.prototype.forEach.call(g.querySelectorAll('.opt'),function(x,n){x.disabled=true;if(n===q.a)x.classList.add('good');else if(n===k)x.classList.add('bad')});
+    st.a.push(k);save(); setTimeout(draw,k===q.a?700:1500)});g.appendChild(b)});
+}
+$('share').addEventListener('click',function(){Card.copy(shareText(),$('share'))});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'buzzword-decoder.png')});
+draw();
+</script>

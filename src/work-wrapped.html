@@ -1,0 +1,55 @@
+<!-- title: Work Wrapped | Your year in meetings, as a shareable card. Runs in your browser. -->
+<h1>Work Wrapped</h1>
+<p class="sub">Your year in meetings, Spotify-style. Drop in your calendar and get a card you can post. Nothing leaves your browser.</p>
+<div class="grid">
+<section class="card">
+<!--@ICSDROP-->
+<label for="period">Period</label>
+<select id="period"><option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option><option value="y">This calendar year</option></select>
+<div class="chk"><input id="hide" type="checkbox" checked><label for="hide">Hide meeting names</label></div>
+<p class="note">Counts meetings with two or more people. Skips all-day, cancelled and declined events.</p>
+</section>
+<section><div class="preview" id="out">Your card appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@ICS*/
+/*@CARD*/
+var events=[],canvas=null,txt='';
+var DN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function range(){
+  var v=$('period').value,now=new Date(),to=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1),from;
+  if(v==='y') from=new Date(now.getFullYear(),0,1); else from=new Date(now.getFullYear(),now.getMonth()-(+v),now.getDate());
+  return {from:from,to:to};
+}
+function run(){
+  if(!events.length) return; UI.err('');
+  var r=range(),occ=ICS.expand(events,r.from,r.to);
+  if(!occ.length){UI.err('No meetings with two or more people in that period.');return}
+  var hrs=0,byDay=[0,0,0,0,0,0,0],byTitle={},longest=null,people={},days={},streak=0,best=0,prev=null,prevDay='';
+  occ.forEach(function(o){
+    var h=o.mins/60; hrs+=h; byDay[o.start.getDay()]+=h; byTitle[o.title]=(byTitle[o.title]||0)+h;
+    if(!longest||o.mins>longest.mins) longest=o; (o.emails||[]).forEach(function(e){people[e]=1});
+    var dk=o.start.toDateString(); days[dk]=1;
+    if(prev&&dk===prevDay&&(o.start-prev.end)/6e4<=10) streak++; else streak=1;
+    if(streak>best) best=streak; prev=o; prevDay=dk;
+  });
+  var bd=0; byDay.forEach(function(v,i){if(v>byDay[bd]) bd=i});
+  var top=Object.keys(byTitle).sort(function(a,b){return byTitle[b]-byTitle[a]})[0];
+  var h=Math.round(hrs),daysEq=Math.round(hrs/8);
+  var hide=$('hide').checked, nPeople=Object.keys(people).length;
+  var period=r.from.toLocaleDateString('en-US',{month:'short',year:'numeric'})+' to '+new Date(r.to-DAY).toLocaleDateString('en-US',{month:'short',year:'numeric'});
+  canvas=Card.poster({kicker:'Work Wrapped  |  '+period,headline:h.toLocaleString('en-US')+' hours in meetings.',
+    sub:'That is '+daysEq+' full working days'+(hide?'.':'. Most time went to "'+top+'".'),
+    stats:[{v:occ.length.toLocaleString('en-US'),l:'Meetings'},{v:DN[bd],l:'Busiest day'},{v:best+' in a row',l:'Longest back-to-back'},{v:nPeople?nPeople.toLocaleString('en-US'):'n/a',l:'Different people'}],
+    footer:'Made with Work Wrapped',hue:24});
+  Card.show($('out'),canvas,420);
+  txt='My Work Wrapped: '+h+' hours in meetings ('+daysEq+' working days), '+occ.length+' meetings, busiest day '+DN[bd]+', longest back-to-back run '+best+'.';
+  $('png').disabled=$('copy').disabled=false;
+}
+UI.dropzone('drop','file',function(t){events=ICS.parse(t); if(!events.length){UI.err('That file has no events. Is it an .ics calendar export?');return} run()});
+$('sample').addEventListener('click',function(){events=ICS.parse(ICS.sample()); run()});
+['period','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'work-wrapped.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

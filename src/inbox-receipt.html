@@ -1,0 +1,100 @@
+<!-- title: Inbox Receipt | Your email as a receipt, with the Reply-All Tax. -->
+<h1>Inbox Receipt</h1>
+<p class="sub">Your email as a receipt, including the Reply-All Tax: what pile-on replies cost everyone who had to read them. Read in your browser, one header at a time. Message bodies are skipped.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose mail files"><strong>Drop a Gmail Takeout .mbox, or .eml files</strong><span>Google Takeout, Mail only. Or click to choose.</span><input id="file" type="file" accept=".mbox,.eml,message/rfc822" multiple hidden></div>
+<div class="btns"><button id="sample">Try with sample mail</button></div><div class="err" id="err" role="alert"></div>
+<label for="me">Your email address(es), comma separated (blank to guess)</label>
+<input id="me" type="text" placeholder="you@example.com">
+<div class="row"><div><label for="rate">Cost per person-hour</label><input id="rate" type="number" min="0" step="5" value="60"></div>
+<div><label for="cur">Currency</label><select id="cur"><option>$</option><option>EUR </option><option>GBP </option><option>INR </option></select></div></div>
+<div class="row"><div><label for="sal">Or yearly pay</label><input id="sal" type="number" min="0" step="1000" placeholder="e.g. 120000"></div>
+<div><label for="secs">Seconds to read a reply</label><input id="secs" type="number" min="1" step="5" value="20"></div></div>
+<div class="chk"><input id="hide" type="checkbox" checked><label for="hide">Hide sender names</label></div>
+<p class="note">A pile-on is a reply or forward with 5 or more people on it. The tax is people times reading seconds, an estimate. The rate is applied to everyone, so a blended average is fine.</p>
+</section>
+<section><div class="preview" id="out">Your receipt appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var msgs=[],canvas=null,txt='';
+var ADDR=/[a-z0-9._%+'-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+function addrs(s){return ((s||'').match(ADDR)||[]).map(function(x){return x.toLowerCase()})}
+async function parseFile(file,out){
+  var eml=/\.eml$/i.test(file.name),reader=file.stream().getReader(),dec=new TextDecoder('utf-8'),buf='',inH=eml,hdr=eml?{}:null,last=null,prevBlank=true;
+  function line(l){
+    l=l.replace(/\r$/,'');
+    if(!inH){ if(prevBlank&&/^From /.test(l)){inH=true;hdr={};last=null} prevBlank=(l===''); return }
+    if(l===''){ inH=false; if(hdr) out.push(hdr); hdr=null; prevBlank=true; return }
+    if(/^[ \t]/.test(l)&&last){hdr[last]+=' '+l.trim();return}
+    var i=l.indexOf(':'); if(i>0){var k=l.slice(0,i).toLowerCase(); if(k in hdr){last='__dup';hdr.__dup=''} else {last=k;hdr[k]=l.slice(i+1).trim()}}
+  }
+  for(;;){
+    var r=await reader.read(); if(r.done) break;
+    buf+=dec.decode(r.value,{stream:true}); var parts=buf.split('\n'); buf=parts.pop(); for(var i=0;i<parts.length;i++) line(parts[i]);
+  }
+  if(buf) line(buf); if(eml&&hdr) out.push(hdr);
+}
+function rec(h){
+  var d=new Date(h.date); if(isNaN(d)) return null;
+  var from=addrs(h.from)[0]||'', to=addrs(h.to), cc=addrs(h.cc), all={}; to.concat(cc).forEach(function(a){all[a]=1});
+  return {d:d,from:from,n:Object.keys(all).length,subj:h.subject||'',sent:/\bSent\b/i.test(h['x-gmail-labels']||''),rcpts:Object.keys(all)};
+}
+async function load(files){
+  UI.err(''); $('out').textContent='Reading...'; var raw=[];
+  try{ for(var i=0;i<files.length;i++) await parseFile(files[i],raw) }catch(e){UI.err('Could not read that file.');return}
+  msgs=raw.map(rec).filter(Boolean);
+  if(!msgs.length){UI.err('No messages found. Is this a .mbox or .eml file?');$('out').textContent='Your receipt appears here.';return}
+  run();
+}
+function guessMe(){
+  var c={}; msgs.forEach(function(m){if(m.sent&&m.from) c[m.from]=(c[m.from]||0)+1});
+  var k=Object.keys(c).sort(function(a,b){return c[b]-c[a]})[0]; if(k) return [k];
+  c={}; msgs.forEach(function(m){m.rcpts.forEach(function(a){c[a]=(c[a]||0)+1})});
+  k=Object.keys(c).sort(function(a,b){return c[b]-c[a]})[0]; return k?[k]:[];
+}
+function run(){
+  if(!msgs.length) return;
+  var me=$('me').value.split(',').map(function(x){return x.trim().toLowerCase()}).filter(Boolean), guessed=false;
+  if(!me.length){me=guessMe();guessed=true}
+  var rate=Math.max(0,+$('rate').value||0),secs=Math.max(1,+$('secs').value||20),cur=$('cur').value,hide=$('hide').checked;
+  var rcv=0,snt=0,hours=new Array(24).fill(0),wk=[0,0,0,0,0,0,0],senders={},pile=0,pilePeople=0,pileMax=0,min=null,max=null;
+  msgs.forEach(function(m){
+    if(!min||m.d<min) min=m.d; if(!max||m.d>max) max=m.d;
+    if(me.indexOf(m.from)>=0) snt++; else {rcv++; hours[m.d.getHours()]++; wk[m.d.getDay()]++; senders[m.from]=(senders[m.from]||0)+1}
+    if(m.n>=5&&/^\s*(re|fw|fwd)\s*:/i.test(m.subj)){pile++;pilePeople+=m.n;if(m.n>pileMax) pileMax=m.n}
+  });
+  var bh=0;hours.forEach(function(v,i){if(v>hours[bh]) bh=i}); var bw=0;wk.forEach(function(v,i){if(v>wk[bw]) bw=i});
+  var DN=['Sundays','Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays'];
+  var top=Object.keys(senders).sort(function(a,b){return senders[b]-senders[a]}).slice(0,3);
+  var taxH=pilePeople*secs/3600, taxC=taxH*rate;
+  function hf(h){return (h%12||12)+(h<12?' am':' pm')}
+  function f(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+  var L=[{t:'c',l:'INBOX RECEIPT',cls:'b big'},{t:'c',l:f(min)+' to '+f(max),cls:'m'},{t:'sep'},
+   {t:'r',l:'MESSAGES',r:msgs.length.toLocaleString('en-US')},{t:'r',l:'RECEIVED',r:rcv.toLocaleString('en-US')},{t:'r',l:'SENT',r:snt.toLocaleString('en-US')},
+   {t:'r',l:'BUSIEST HOUR',r:hf(bh)},{t:'r',l:'BUSIEST DAY',r:DN[bw]},{t:'sep'},{t:'c',l:'TOP SENDERS',cls:'b'}];
+  top.forEach(function(a,i){L.push({t:'r',l:hide?'Sender '+(i+1):(a.length>26?a.slice(0,25)+'...':a),r:String(senders[a])})});
+  L.push({t:'sep'},{t:'c',l:'REPLY-ALL TAX',cls:'b'},{t:'r',l:'PILE-ONS (5+ PEOPLE)',r:String(pile)},{t:'r',l:'LARGEST PILE-ON',r:pileMax+' people'},
+   {t:'r',l:'PERSON-HOURS TO READ',r:taxH.toFixed(1)},{t:'r',l:'TOTAL TAX',r:cur+Math.round(taxC).toLocaleString('en-US'),cls:'b big'},{t:'sep'},
+   {t:'c',l:'Rate used: '+cur+rate+'/hr, '+secs+' s per reply',cls:'m'},{t:'c',l:guessed?'Guessed you are '+(hide?'(hidden)':me[0]||'unknown'):'Counting as you: '+(hide?'(hidden)':me.join(', ')),cls:'m'});
+  canvas=Card.receipt(L); Card.show($('out'),canvas,440); txt=Card.receiptText(L);
+  $('png').disabled=$('copy').disabled=false;
+}
+function sampleMbox(){
+  var out=[],t0=Date.now()-90*DAY,names=['ana','ben','chloe','dev','eli','fay'];
+  for(var i=0;i<700;i++){
+    var d=new Date(t0+i*(90*DAY/700)+Math.floor(Math.random()*3600e3)),sent=i%5===0,from=sent?'you@example.com':names[i%6]+'@example.com',n=1+(i%9===0?6+(i%4):i%3);
+    var to=[];for(var k=0;k<n;k++) to.push(k===0&&!sent?'you@example.com':'p'+k+'@example.com');
+    out.push('From x@x Mon Jan  1 00:00:00 2026\nFrom: '+from+'\nTo: '+to.join(', ')+'\nDate: '+d.toUTCString()+'\nSubject: '+(i%9===0?'Re: ':'')+'Thread '+(i%40)+'\nX-Gmail-Labels: '+(sent?'Sent':'Inbox')+'\n\nbody line\n');
+  }
+  return new File([out.join('\n')],'sample.mbox');
+}
+UI.dropzone('drop','file',function(files){load(Array.prototype.slice.call(files))},false);
+$('sample').addEventListener('click',function(){load([sampleMbox()])});
+['me','rate','cur','secs','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('sal').addEventListener('input',function(){var s=+$('sal').value; if(s>0) $('rate').value=Math.round(s/2080*100)/100; run()});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'inbox-receipt.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

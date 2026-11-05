@@ -1,0 +1,14 @@
+name: build
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generated pages are up to date
+        run: |
+          python3 build.py
+          git diff --exit-code || (echo "Run python3 build.py and commit the result." && exit 1)

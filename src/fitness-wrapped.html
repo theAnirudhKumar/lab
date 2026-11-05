@@ -1,0 +1,89 @@
+<!-- title: Fitness Wrapped | Your year of movement from a Strava or Apple Health export, as a shareable card. -->
+<h1>Fitness Wrapped</h1>
+<p class="sub">Your year of movement as a card you can post. Works with a Strava export or an Apple Health export. Read in your browser, never uploaded.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose an export file"><strong>Drop Strava activities.csv or Apple Health export.xml</strong><span>Strava: Settings, My Account, Download or delete your account. Apple Health: Health app, your profile, Export All Health Data. Or click to choose.</span><input id="file" type="file" accept=".csv,.xml" hidden></div>
+<div class="btns"><button id="sample">Try with sample data</button></div><div class="err" id="err" role="alert"></div>
+<label for="year">Year</label><select id="year"></select>
+<div class="chk"><input id="mi" type="checkbox"><label for="mi">Use miles</label></div>
+<p class="note">Apple Health files can be very large. The browser reads only the workout lines and skips the rest. Distances come from the export as recorded.</p>
+</section>
+<section><div class="preview" id="out">Your card appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var acts=[],canvas=null,txt='';
+function num(s){var v=parseFloat(String(s||'').replace(/,/g,''));return isNaN(v)?0:v}
+function loadStrava(t){
+  var r=parseCSV(t),h=r[0].map(function(x){return x.trim().toLowerCase()});
+  var id=h.indexOf('activity date'),it=h.indexOf('activity type'),im=h.indexOf('moving time'),ie=h.indexOf('elapsed time'),iel=h.indexOf('elevation gain');
+  var dc=[];h.forEach(function(x,i){if(x==='distance') dc.push(i)});
+  if(id<0||!dc.length) return false;
+  var mx=dc.map(function(c){var m=0;for(var i=1;i<r.length;i++){var v=num(r[i][c]);if(v>m)m=v}return m});
+  var best=0;mx.forEach(function(v,i){if(v>mx[best])best=i});
+  var meters=mx[best]>2000,c=dc[best];
+  for(var i=1;i<r.length;i++){var x=r[i],d=new Date(x[id]);if(isNaN(d)) continue;
+    var km=num(x[c])/(meters?1000:1),sec=num(im>=0?x[im]:0)||num(ie>=0?x[ie]:0);
+    acts.push({d:d,type:(it>=0&&x[it])||'Activity',km:km,sec:sec,el:iel>=0?num(x[iel]):0})}
+  return true;
+}
+async function loadXml(file){
+  var rd=file.stream().getReader(),dec=new TextDecoder('utf-8'),buf='';
+  function line(l){
+    var m=l.match(/<Workout\b([^>]*)>/); if(!m) return;
+    var a={};m[1].replace(/(\w+)="([^"]*)"/g,function(_,k,v){a[k]=v});
+    var d=new Date((a.startDate||'').replace(' ','T').replace(' ','').replace(/([+-]\d\d)(\d\d)$/,'$1:$2')); if(isNaN(d)) return;
+    var dur=num(a.duration),u=a.durationUnit||'min',sec=u==='min'?dur*60:u==='hr'?dur*3600:dur;
+    var dist=num(a.totalDistance),du=a.totalDistanceUnit||'km',km=du==='mi'?dist*1.609344:du==='m'?dist/1000:dist;
+    acts.push({d:d,type:(a.workoutActivityType||'Workout').replace('HKWorkoutActivityType',''),km:km,sec:sec,el:0});
+  }
+  for(;;){var r=await rd.read();if(r.done)break;buf+=dec.decode(r.value,{stream:true});var p=buf.split('\n');buf=p.pop();for(var i=0;i<p.length;i++)line(p[i])}
+  if(buf) line(buf);
+}
+async function load(files){
+  UI.err('');acts=[];var f=files[0];if(!f) return;
+  try{
+    if(/\.xml$/i.test(f.name)) await loadXml(f);
+    else if(!loadStrava(await f.text())){UI.err('That CSV does not look like Strava activities.csv.');return}
+  }catch(e){UI.err('Could not read that file.');return}
+  if(!acts.length){UI.err('No activities found in that file.');return}
+  fill();run();
+}
+function fill(){
+  var ys={};acts.forEach(function(a){ys[a.d.getFullYear()]=1});
+  var l=Object.keys(ys).sort().reverse(),s=$('year');s.textContent='';
+  l.concat(['All time']).forEach(function(y){var o=document.createElement('option');o.value=y;o.textContent=y;s.appendChild(o)});
+}
+function run(){
+  if(!acts.length) return;
+  var y=$('year').value,A=acts.filter(function(a){return y==='All time'||a.d.getFullYear()===+y}),mi=$('mi').checked,k=mi?0.621371:1,unit=mi?'miles':'km';
+  if(!A.length) return;
+  var km=0,sec=0,el=0,types={},days={},mo={},longest=null;
+  A.forEach(function(a){km+=a.km;sec+=a.sec;el+=a.el;types[a.type]=(types[a.type]||0)+1;days[a.d.toDateString()]=a.d;var m=a.d.getFullYear()+'-'+a.d.getMonth();mo[m]=(mo[m]||0)+1;if(!longest||a.km>longest.km) longest=a});
+  var fav=Object.keys(types).sort(function(a,b){return types[b]-types[a]})[0];
+  var ds=Object.keys(days).map(function(k){return days[k].getTime()}).sort(function(a,b){return a-b}),best=1,cur=1;
+  for(var i=1;i<ds.length;i++){var gap=Math.round((new Date(ds[i]).setHours(0,0,0,0)-new Date(ds[i-1]).setHours(0,0,0,0))/DAY);if(gap===1){cur++}else cur=1;if(cur>best)best=cur}
+  var dist=Math.round(km*k),hrs=Math.round(sec/3600);
+  canvas=Card.poster({kicker:'Fitness Wrapped  |  '+y,headline:dist.toLocaleString('en-US')+' '+unit+' on the move.',
+    sub:(km/42.195).toFixed(1)+' marathons of distance, '+hrs+' hours, '+A.length+' activities.',
+    stats:[{v:A.length.toLocaleString('en-US'),l:'Activities'},{v:hrs.toLocaleString('en-US')+' h',l:'Moving time'},{v:best+(best===1?' day':' days'),l:'Longest streak'},{v:fav,l:'Favourite'}],
+    footer:'Made with Fitness Wrapped',hue:150});
+  Card.show($('out'),canvas,420);
+  txt='My Fitness Wrapped '+y+': '+dist+' '+unit+', '+hrs+' hours, '+A.length+' activities, longest streak '+best+' days, favourite: '+fav+'.';
+  $('png').disabled=$('copy').disabled=false;
+}
+function sampleCsv(){
+  var o=['Activity ID,Activity Date,Activity Name,Activity Type,Activity Description,Elapsed Time,Distance,Max Heart Rate,Relative Effort,Commute,Activity Private Note,Activity Gear,Filename,Athlete Weight,Bike Weight,Elapsed Time,Moving Time,Distance,Max Speed,Average Speed,Elevation Gain'],t=['Run','Ride','Walk','Swim'],now=new Date(),y=now.getFullYear();
+  for(var i=0;i<240;i++){var d=new Date(y,0,1+Math.floor(i*1.4)+(i%3));if(d>now) break;var ty=t[i%4==3?(i%8==3?3:2):(i%2)],m=ty==='Ride'?32000:ty==='Run'?8000:ty==='Walk'?4000:1200,mv=Math.round(m/(ty==='Ride'?7:ty==='Run'?2.8:1.4));
+    var s=d.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}).replace(/, (\d+:\d\d:\d\d)/,', $1');
+    o.push(['"'+i+'"','"'+s+'"','x',ty,'',mv+60,(m/1000).toFixed(2),'','','','','','','','',mv+60,mv,m,'','',ty==='Ride'?200:20].join(','))}
+  return o.join('\n');
+}
+UI.dropzone('drop','file',load,false);
+$('sample').addEventListener('click',function(){acts=[];loadStrava(sampleCsv());fill();run()});
+['year','mi'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'fitness-wrapped.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

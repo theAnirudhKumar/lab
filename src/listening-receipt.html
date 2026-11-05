@@ -1,0 +1,55 @@
+<!-- title: Listening Receipt | Your Spotify listening history as a receipt. -->
+<h1>Listening Receipt</h1>
+<p class="sub">Your Spotify listening as a receipt: hours, top artists, top tracks and how much of it happened after midnight. Read in your browser, never uploaded.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose Spotify history files"><strong>Drop your Streaming_History_Audio .json files</strong><span>Spotify: Account, Privacy, Download your data, choose Extended streaming history. Select all the audio files. Or click to choose.</span><input id="file" type="file" accept=".json" multiple hidden></div>
+<div class="btns"><button id="sample">Try with sample data</button></div><div class="err" id="err" role="alert"></div>
+<label for="year">Year</label><select id="year"></select>
+<div class="chk"><input id="hide" type="checkbox"><label for="hide">Hide artist and track names</label></div>
+<p class="note">Counts plays of 30 seconds or more. Podcasts and videos are left out. Times use your local time zone.</p>
+</section>
+<section><div class="preview" id="out">Your receipt appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var plays=[],canvas=null,txt='';
+async function load(files){
+  UI.err('');plays=[];
+  try{for(var i=0;i<files.length;i++){var j=JSON.parse(await files[i].text());if(!Array.isArray(j)) continue;
+    j.forEach(function(x){var tr=x.master_metadata_track_name,ar=x.master_metadata_album_artist_name,ms=x.ms_played,d=new Date(x.ts);
+      if(tr&&ar&&ms>=30000&&!isNaN(d)) plays.push({d:d,ms:ms,t:tr,a:ar})})}}
+  catch(e){UI.err('Could not read those files. Use the Streaming_History_Audio .json files.');return}
+  if(!plays.length){UI.err('No music plays found. Is this the Extended streaming history?');return}
+  fill();run();
+}
+function fill(){var ys={};plays.forEach(function(p){ys[p.d.getFullYear()]=1});var s=$('year');s.textContent='';Object.keys(ys).sort().reverse().forEach(function(y){var o=document.createElement('option');o.value=y;o.textContent=y;s.appendChild(o)})}
+function topN(o,n){return Object.keys(o).sort(function(a,b){return o[b]-o[a]}).slice(0,n)}
+function cut(s,n){s=String(s);return s.length>n?s.slice(0,n-1)+'...':s}
+function run(){
+  var y=+$('year').value,P=plays.filter(function(p){return p.d.getFullYear()===y}),hide=$('hide').checked;if(!P.length) return;
+  var ms=0,late=0,art={},trk={},cnt={},day={};
+  P.forEach(function(p){ms+=p.ms;if(p.d.getHours()<5) late+=p.ms;art[p.a]=(art[p.a]||0)+p.ms;var k=p.a+' | '+p.t;trk[k]=(trk[k]||0)+1;day[p.d.toDateString()]=(day[p.d.toDateString()]||0)+p.ms});
+  var hrs=ms/36e5,ta=topN(art,5),tt=topN(trk,3),bd=topN(day,1)[0];
+  var L=[{t:'c',l:'LISTENING RECEIPT',cls:'b big'},{t:'c',l:String(y),cls:'m'},{t:'sep'},
+   {t:'r',l:'PLAYS',r:P.length.toLocaleString('en-US')},{t:'r',l:'HOURS LISTENED',r:Math.round(hrs).toLocaleString('en-US')},{t:'r',l:'DAYS, NONSTOP',r:(hrs/24).toFixed(1)},
+   {t:'r',l:'DIFFERENT ARTISTS',r:Object.keys(art).length.toLocaleString('en-US')},{t:'r',l:'AFTER MIDNIGHT (0-5 AM)',r:Math.round(late/ms*100)+'%'},{t:'r',l:'BIGGEST DAY',r:(day[bd]/36e5).toFixed(1)+' h'},{t:'sep'},{t:'c',l:'TOP ARTISTS',cls:'b'}];
+  ta.forEach(function(a,i){L.push({t:'r',l:hide?'Artist '+(i+1):cut(a,24),r:Math.round(art[a]/36e5)+' h'})});
+  L.push({t:'sep'},{t:'c',l:'MOST PLAYED TRACKS',cls:'b'});
+  tt.forEach(function(k,i){L.push({t:'r',l:hide?'Track '+(i+1):cut(k.split(' | ').slice(1).join(' | '),26),r:trk[k]+' plays'})});
+  L.push({t:'sep'},{t:'r',l:'TOTAL',r:Math.round(hrs)+' h',cls:'b big'},{t:'sep'},{t:'c',l:'Keep the volume up.',cls:'b'},{t:'c',l:'Made with Listening Receipt',cls:'m'});
+  canvas=Card.receipt(L);Card.show($('out'),canvas,440);txt=Card.receiptText(L);$('png').disabled=$('copy').disabled=false;
+}
+function sample(){
+  var A=['Aster Vale','Neon Harbor','The Quiet Fields','Marlow','Sunday Static','Kite & Co'],o=[],t0=Date.now()-300*DAY,r=mulberry(7);
+  for(var i=0;i<4000;i++){var d=new Date(t0+i*(300*DAY/4000)+Math.floor(r()*86400000)%(86400000)),a=A[Math.floor(Math.pow(r(),1.8)*6)];
+    o.push({ts:d.toISOString(),ms_played:30000+Math.floor(r()*240000),master_metadata_track_name:a+' Song '+(1+Math.floor(r()*5)),master_metadata_album_artist_name:a})}
+  return new File([JSON.stringify(o)],'Streaming_History_Audio_sample.json');
+}
+UI.dropzone('drop','file',load,false);
+$('sample').addEventListener('click',function(){load([sample()])});
+['year','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'listening-receipt.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

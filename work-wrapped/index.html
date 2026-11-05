@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Work Wrapped</title><meta name="description" content="Your year in meetings, as a shareable card. Runs in your browser.">
+<style>:root{--bg:#f4f1ea;--ink:#1c1b19;--mute:#6f6a60;--card:#fffdf8;--line:#d9d3c5;--accent:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--ink:#ece8de;--mute:#9a9486;--card:#1f1e1b;--line:#37342d;--accent:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 24px;max-width:58ch}
+.grid{display:grid;gap:24px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:minmax(0,1fr) 420px;align-items:start}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;transition:.15s}
+.drop.over,.drop:hover,.drop:focus{border-color:var(--accent);outline:none}
+.drop strong{display:block;font-size:18px}
+.drop span{color:var(--mute);font-size:14px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input[type=number],input[type=text],input[type=date],input[type=color],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=color]{padding:2px;height:40px}
+input[type=range]{width:100%}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:14px}
+.chk label{margin:0;color:var(--ink)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:9px 14px}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.note{font-size:13px;color:var(--mute);margin-top:14px}
+.err{color:#b91c1c;font-size:14px;margin-top:10px;min-height:1px}
+.preview{min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--mute);text-align:center}
+a{color:var(--accent)}
+.priv{font-size:13px;color:var(--mute);margin-top:28px;border-top:1px solid var(--line);padding-top:14px}
+</style></head>
+<body><main>
+<h1>Work Wrapped</h1>
+<p class="sub">Your year in meetings, Spotify-style. Drop in your calendar and get a card you can post. Nothing leaves your browser.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a calendar file"><strong>Drop a calendar file here</strong><span>.ics export from Google Calendar, Outlook or Apple Calendar. Or click to choose.</span><input id="file" type="file" accept=".ics,text/calendar" hidden></div>
+<div class="btns"><button id="sample">Try with a sample calendar</button></div><div class="err" id="err" role="alert"></div>
+<label for="period">Period</label>
+<select id="period"><option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option><option value="y">This calendar year</option></select>
+<div class="chk"><input id="hide" type="checkbox" checked><label for="hide">Hide meeting names</label></div>
+<p class="note">Counts meetings with two or more people. Skips all-day, cancelled and declined events.</p>
+</section>
+<section><div class="preview" id="out">Your card appears here.</div><div class="btns" style="justify-content:center"><button class="primary" id="png" disabled>Download image</button><button id="copy" disabled>Copy text</button></div></section>
+</div>
+<p class="priv">Runs entirely in your browser. Nothing is uploaded and there is no tracking.</p>
+<script>
+var DAY=864e5;
+var ICS=(function(){
+function unfold(t){return t.replace(/\r\n/g,'\n').replace(/\r/g,'\n').replace(/\n[ \t]/g,'')}
+function parseProp(line){
+  var i=line.indexOf(':'); if(i<0) return null;
+  var head=line.slice(0,i), val=line.slice(i+1), parts=head.split(';'), p={name:parts[0].toUpperCase(),val:val,params:{}};
+  for(var k=1;k<parts.length;k++){var kv=parts[k].split('='); p.params[kv[0].toUpperCase()]=(kv[1]||'').replace(/"/g,'')}
+  return p;
+}
+function parseDate(p){
+  var v=p.val.trim(), m=v.match(/^(\d{4})(\d\d)(\d\d)(?:T(\d\d)(\d\d)(\d\d)?(Z)?)?$/);
+  if(!m) return null;
+  var allDay=!m[4];
+  var d=m[7]?new Date(Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0))):new Date(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+  return {d:d,allDay:allDay||p.params.VALUE==='DATE'};
+}
+function parse(text){
+  var lines=unfold(text).split('\n'), out=[], cur=null;
+  lines.forEach(function(l){
+    if(l==='BEGIN:VEVENT'){cur={att:0,declined:0,ex:[],emails:[]};return}
+    if(l==='END:VEVENT'){if(cur) out.push(cur); cur=null; return}
+    if(!cur) return;
+    var p=parseProp(l); if(!p) return;
+    switch(p.name){
+      case 'SUMMARY': cur.title=p.val.replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\n/gi,' ').trim(); break;
+      case 'DESCRIPTION': cur.desc=p.val.replace(/\\n/gi,' ').trim(); break;
+      case 'DTSTART': cur.s=parseDate(p); break;
+      case 'DTEND': cur.e=parseDate(p); break;
+      case 'DURATION': cur.dur=p.val; break;
+      case 'STATUS': cur.status=p.val.toUpperCase(); break;
+      case 'RRULE': cur.rr=p.val; break;
+      case 'EXDATE': p.val.split(',').forEach(function(x){var q=parseDate({val:x,params:{}}); if(q) cur.ex.push(q.d.toDateString())}); break;
+      case 'ORGANIZER': cur.org=p.val.toLowerCase(); break;
+      case 'ATTENDEE':
+        if(/DECLINED/i.test(p.params.PARTSTAT||'')) cur.declined++;
+        else if(!/RESOURCE|ROOM/i.test(p.params.CUTYPE||'')){cur.att++; var em=p.val.toLowerCase().replace('mailto:',''); cur.emails.push(em); if(cur.org&&p.val.toLowerCase()===cur.org) cur.orgIn=true}
+        break;
+    }
+  });
+  return out;
+}
+function durMinutes(ev){
+  if(ev.s&&ev.e) return Math.round((ev.e.d-ev.s.d)/6e4);
+  if(ev.dur){var m=ev.dur.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/); if(m) return (+m[1]||0)*1440+(+m[2]||0)*60+(+m[3]||0)}
+  return 0;
+}
+function people(ev){return ev.att+((ev.org&&!ev.orgIn&&ev.att>0)?1:0)}
+var BYDAY={SU:0,MO:1,TU:2,WE:3,TH:4,FR:5,SA:6};
+function occurrences(ev,from,to){
+  var s=ev.s.d, res=[];
+  if(!ev.rr){ if(s>=from&&s<to) res.push(s); return res }
+  var r={}; ev.rr.split(';').forEach(function(x){var kv=x.split('='); r[kv[0]]=kv[1]});
+  var freq=r.FREQ, inter=+(r.INTERVAL||1), count=r.COUNT?+r.COUNT:Infinity, until=null;
+  if(r.UNTIL){var u=parseDate({val:r.UNTIL,params:{}}); if(u) until=new Date(u.d.getTime()+(u.allDay?DAY:0))}
+  var days=r.BYDAY?r.BYDAY.split(',').map(function(x){return BYDAY[x.slice(-2)]}).filter(function(x){return x!==undefined}):null;
+  var n=0, cursor=new Date(s.getTime()), guard=0, hh=s.getHours(), mm=s.getMinutes(), ss=s.getSeconds();
+  function push(d){
+    if(until&&d>until) return false;
+    if(n>=count) return false;
+    n++;
+    if(d>=from&&d<to&&ev.ex.indexOf(d.toDateString())<0) res.push(d);
+    return true;
+  }
+  if(freq==='DAILY'){
+    while(cursor<to&&guard++<6000){
+      if(!days||days.indexOf(cursor.getDay())>=0){ if(!push(new Date(cursor))) break }
+      cursor=new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+inter,hh,mm,ss);
+    }
+  } else if(freq==='WEEKLY'){
+    var wk=new Date(s.getFullYear(),s.getMonth(),s.getDate()-s.getDay(),hh,mm,ss), list=days||[s.getDay()];
+    list=list.slice().sort(function(a,b){return a-b});
+    while(wk<to&&guard++<3000){
+      var stop=false;
+      for(var i=0;i<list.length;i++){
+        var d=new Date(wk.getFullYear(),wk.getMonth(),wk.getDate()+list[i],hh,mm,ss);
+        if(d<s) continue;
+        if(!push(d)){stop=true;break}
+      }
+      if(stop) break;
+      wk=new Date(wk.getFullYear(),wk.getMonth(),wk.getDate()+7*inter,hh,mm,ss);
+    }
+  } else if(freq==='MONTHLY'){
+    var i2=0;
+    while(guard++<800){
+      var d2=new Date(s.getFullYear(),s.getMonth()+i2*inter,s.getDate(),hh,mm,ss);
+      if(d2>=to) break;
+      if(d2.getDate()===s.getDate()){ if(!push(d2)) break }
+      i2++;
+    }
+  } else if(s>=from&&s<to) res.push(s);
+  return res;
+}
+/* flat list of real multi-person meetings inside [from,to) */
+function expand(events,from,to){
+  var out=[];
+  events.forEach(function(ev){
+    if(!ev.s||ev.s.allDay||ev.status==='CANCELLED') return;
+    var mins=durMinutes(ev), ppl=people(ev);
+    if(mins<5||mins>600||ppl<2) return;
+    var agenda=!!(ev.desc&&ev.desc.length>=40);
+    occurrences(ev,from,to).forEach(function(d){
+      out.push({title:ev.title||'Untitled',start:d,end:new Date(d.getTime()+mins*6e4),mins:mins,ppl:ppl,rec:!!ev.rr,agenda:agenda,emails:ev.emails});
+    });
+  });
+  out.sort(function(a,b){return a.start-b.start});
+  return out;
+}
+/* a realistic fictional calendar, starting a year back, for "try it" buttons */
+function sample(){
+  var now=new Date(); now.setHours(0,0,0,0);
+  var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-((now.getDay()+6)%7)-7*52);
+  function p2(n){return String(n).padStart(2,'0')}
+  function st(off,h,m){var d=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+off,h,m); return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+'T'+p2(h)+p2(m)+'00'}
+  function att(n){var s=''; for(var i=0;i<n;i++) s+='ATTENDEE;PARTSTAT=ACCEPTED:mailto:person'+i+'@example.com\n'; return s}
+  var uid=0;
+  function ev(t,off,h1,m1,h2,m2,n,rr,desc){uid++; return 'BEGIN:VEVENT\nUID:s'+uid+'\nSUMMARY:'+t+'\nDTSTART:'+st(off,h1,m1)+'\nDTEND:'+st(off,h2,m2)+'\n'+(rr?'RRULE:'+rr+'\n':'')+(desc?'DESCRIPTION:'+desc+'\n':'')+att(n)+'END:VEVENT\n'}
+  var ag='Agenda: decide scope, owners and the go or no-go. Pre-read is linked in the doc.';
+  return 'BEGIN:VCALENDAR\n'+
+   ev('Daily Standup',0,9,30,9,45,7,'FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR')+
+   ev('Weekly Product Sync',4,10,0,11,0,11,'FREQ=WEEKLY;BYDAY=FR')+
+   ev('All-hands',1,15,0,16,0,38,'FREQ=WEEKLY;BYDAY=TU')+
+   ev('1:1 with manager',2,14,0,14,30,1,'FREQ=WEEKLY;BYDAY=WE')+
+   ev('1:1 with direct report',3,11,0,11,30,1,'FREQ=WEEKLY;BYDAY=TH')+
+   ev('Planning',0,10,0,11,30,8,'FREQ=WEEKLY;BYDAY=MO',ag)+
+   ev('Design review',0,11,30,12,15,6,'FREQ=WEEKLY;BYDAY=MO')+
+   ev('Hiring sync',0,12,15,13,0,5,'FREQ=WEEKLY;BYDAY=MO')+
+   ev('Customer review',3,13,0,14,0,5,'FREQ=WEEKLY;INTERVAL=2;BYDAY=TH',ag)+
+   ev('Roadmap brainstorm',2,16,0,17,30,9,'FREQ=MONTHLY')+
+   ev('APAC handover',1,17,30,18,15,6,'FREQ=WEEKLY;BYDAY=TU')+
+   'END:VCALENDAR';
+}
+return {parse:parse,expand:expand,sample:sample};
+})();
+
+var $=function(id){return document.getElementById(id)};
+var DAY=864e5;
+function parseCSV(t){
+  var out=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){var c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c==='"') q=true; else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n') i++; row.push(f);f=''; if(row.length>1||row[0]!=='') out.push(row); row=[] }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row)}
+  return out;
+}
+function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function shuffled(a,r){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(r()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+
+var Card=(function(){
+var MONO='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', SANS='system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+function mk(w,h,sc){var c=document.createElement('canvas');c.width=w*sc;c.height=h*sc;var g=c.getContext('2d');g.scale(sc,sc);return {c:c,g:g}}
+function wrapText(g,text,maxW){
+  var words=String(text).split(' '),lines=[],cur='';
+  words.forEach(function(w){var t=cur?cur+' '+w:w; if(g.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t});
+  if(cur) lines.push(cur); return lines;
+}
+/* lines: [{t:'sep'|'c'|'r', l, r, cls:'b big m'}] */
+function receipt(lines){
+  var sc=2,w=440,lh=22,pad=28;
+  var h=pad*2+lines.reduce(function(a,x){return a+(x.t==='sep'?14:(/big/.test(x.cls||'')?30:lh))},0);
+  var m=mk(w,h,sc),g=m.g; g.fillStyle='#fffefa'; g.fillRect(0,0,w,h);
+  var y=pad;
+  lines.forEach(function(x){
+    if(x.t==='sep'){g.strokeStyle='#1c1b19';g.setLineDash([4,3]);g.beginPath();g.moveTo(pad,y+5);g.lineTo(w-pad,y+5);g.stroke();y+=14;return}
+    var big=/big/.test(x.cls||''),bold=/\bb\b/.test(x.cls||''),mute=/\bm\b/.test(x.cls||'');
+    g.font=(bold?'700 ':'400 ')+(big?'20px ':'13px ')+MONO; g.fillStyle=mute?'#6f6a60':'#1c1b19'; y+=big?22:16;
+    if(x.t==='c'){g.textAlign='center';g.fillText(x.l,w/2,y)}
+    else{g.textAlign='left';g.fillText(x.l,pad,y);g.textAlign='right';g.fillText(x.r,w-pad,y)}
+    y+=big?8:6;
+  });
+  return m.c;
+}
+function receiptText(lines){
+  var W=40;
+  return lines.map(function(x){
+    if(x.t==='sep') return '-'.repeat(W);
+    if(x.t==='c'){return ' '.repeat(Math.max(0,Math.floor((W-x.l.length)/2)))+x.l}
+    return x.l+' '.repeat(Math.max(1,W-x.l.length-x.r.length))+x.r;
+  }).join('\n');
+}
+/* o: {kicker, headline, sub, stats:[{v,l}] (max 4), footer, hue} */
+function poster(o){
+  var W=1080,H=1350,m=mk(W,H,1),g=m.g,h=o.hue==null?20:o.hue;
+  var gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,'hsl('+h+',65%,13%)'); gr.addColorStop(1,'hsl('+((h+50)%360)+',70%,30%)');
+  g.fillStyle=gr; g.fillRect(0,0,W,H);
+  g.globalAlpha=.1; g.fillStyle='#fff'; g.beginPath(); g.arc(W-100,170,270,0,7); g.fill(); g.beginPath(); g.arc(60,H-300,210,0,7); g.fill(); g.globalAlpha=1;
+  g.textBaseline='alphabetic'; g.textAlign='left'; g.fillStyle='#fff';
+  g.font='700 30px '+SANS; g.globalAlpha=.8; g.fillText(String(o.kicker||'').toUpperCase(),80,120); g.globalAlpha=1;
+  var size=112,lines;
+  for(;;){g.font='800 '+size+'px '+SANS; lines=wrapText(g,o.headline,W-160); if(lines.length<=4||size<=52) break; size-=6}
+  var y=270; lines.forEach(function(l){g.fillText(l,80,y); y+=size*1.1});
+  if(o.sub){g.font='400 40px '+SANS; g.globalAlpha=.85; y+=14; wrapText(g,o.sub,W-160).slice(0,3).forEach(function(l){g.fillText(l,80,y);y+=52}); g.globalAlpha=1}
+  var st=(o.stats||[]).slice(0,4), bw=(W-160-30)/2, bh=190;
+  st.forEach(function(s,i){
+    var bx=80+(i%2)*(bw+30), by=H-510+Math.floor(i/2)*(bh+24);
+    g.fillStyle='rgba(255,255,255,.12)'; g.beginPath(); if(g.roundRect) g.roundRect(bx,by,bw,bh,24); else g.rect(bx,by,bw,bh); g.fill();
+    g.fillStyle='#fff'; var vs=68; do{g.font='800 '+vs+'px '+SANS; vs-=4}while(g.measureText(String(s.v)).width>bw-48&&vs>28);
+    g.fillText(String(s.v),bx+24,by+98);
+    g.font='400 26px '+SANS; g.globalAlpha=.75; g.fillText(String(s.l).toUpperCase(),bx+24,by+150); g.globalAlpha=1;
+  });
+  g.font='500 28px '+SANS; g.globalAlpha=.7; g.fillStyle='#fff'; g.fillText(o.footer||'',80,H-44); g.globalAlpha=1;
+  return m.c;
+}
+function show(el,canvas,maxW){
+  el.textContent=''; canvas.style.cssText='width:100%;max-width:'+(maxW||440)+'px;height:auto;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.25);display:block;margin:0 auto';
+  el.appendChild(canvas);
+}
+function download(canvas,name){var a=document.createElement('a');a.download=name||'share.png';a.href=canvas.toDataURL('image/png');a.click()}
+function copy(text,btn){
+  var old=btn.textContent;
+  (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(function(){btn.textContent='Copied'},function(){btn.textContent='Copy failed'});
+  setTimeout(function(){btn.textContent=old},1500);
+}
+return {receipt:receipt,receiptText:receiptText,poster:poster,show:show,download:download,copy:copy,wrapText:wrapText,MONO:MONO,SANS:SANS};
+})();
+var UI={
+  dropzone:function(dropId,fileId,cb,asText){
+    var drop=$(dropId),fi=$(fileId);
+    function take(files){if(!files||!files.length) return; if(asText===false){cb(files)} else {var r=new FileReader(); r.onload=function(){cb(String(r.result))}; r.onerror=function(){UI.err('Could not read that file.')}; r.readAsText(files[0])}}
+    drop.addEventListener('click',function(){fi.click()});
+    drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fi.click()}});
+    fi.addEventListener('change',function(){take(fi.files)});
+    ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+    ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+    drop.addEventListener('drop',function(e){take(e.dataTransfer.files)});
+  },
+  err:function(m){var e=$('err'); if(e) e.textContent=m||''},
+  startOfWeek:function(d){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x}
+};
+
+var events=[],canvas=null,txt='';
+var DN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function range(){
+  var v=$('period').value,now=new Date(),to=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1),from;
+  if(v==='y') from=new Date(now.getFullYear(),0,1); else from=new Date(now.getFullYear(),now.getMonth()-(+v),now.getDate());
+  return {from:from,to:to};
+}
+function run(){
+  if(!events.length) return; UI.err('');
+  var r=range(),occ=ICS.expand(events,r.from,r.to);
+  if(!occ.length){UI.err('No meetings with two or more people in that period.');return}
+  var hrs=0,byDay=[0,0,0,0,0,0,0],byTitle={},longest=null,people={},days={},streak=0,best=0,prev=null,prevDay='';
+  occ.forEach(function(o){
+    var h=o.mins/60; hrs+=h; byDay[o.start.getDay()]+=h; byTitle[o.title]=(byTitle[o.title]||0)+h;
+    if(!longest||o.mins>longest.mins) longest=o; (o.emails||[]).forEach(function(e){people[e]=1});
+    var dk=o.start.toDateString(); days[dk]=1;
+    if(prev&&dk===prevDay&&(o.start-prev.end)/6e4<=10) streak++; else streak=1;
+    if(streak>best) best=streak; prev=o; prevDay=dk;
+  });
+  var bd=0; byDay.forEach(function(v,i){if(v>byDay[bd]) bd=i});
+  var top=Object.keys(byTitle).sort(function(a,b){return byTitle[b]-byTitle[a]})[0];
+  var h=Math.round(hrs),daysEq=Math.round(hrs/8);
+  var hide=$('hide').checked, nPeople=Object.keys(people).length;
+  var period=r.from.toLocaleDateString('en-US',{month:'short',year:'numeric'})+' to '+new Date(r.to-DAY).toLocaleDateString('en-US',{month:'short',year:'numeric'});
+  canvas=Card.poster({kicker:'Work Wrapped  |  '+period,headline:h.toLocaleString('en-US')+' hours in meetings.',
+    sub:'That is '+daysEq+' full working days'+(hide?'.':'. Most time went to "'+top+'".'),
+    stats:[{v:occ.length.toLocaleString('en-US'),l:'Meetings'},{v:DN[bd],l:'Busiest day'},{v:best+' in a row',l:'Longest back-to-back'},{v:nPeople?nPeople.toLocaleString('en-US'):'n/a',l:'Different people'}],
+    footer:'Made with Work Wrapped',hue:24});
+  Card.show($('out'),canvas,420);
+  txt='My Work Wrapped: '+h+' hours in meetings ('+daysEq+' working days), '+occ.length+' meetings, busiest day '+DN[bd]+', longest back-to-back run '+best+'.';
+  $('png').disabled=$('copy').disabled=false;
+}
+UI.dropzone('drop','file',function(t){events=ICS.parse(t); if(!events.length){UI.err('That file has no events. Is it an .ics calendar export?');return} run()});
+$('sample').addEventListener('click',function(){events=ICS.parse(ICS.sample()); run()});
+['period','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'work-wrapped.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>
+
+</main></body></html>

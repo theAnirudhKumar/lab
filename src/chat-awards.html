@@ -1,0 +1,96 @@
+<!-- title: Group Chat Awards | Drop in a WhatsApp chat export and hand out the awards. -->
+<h1>Group Chat Awards</h1>
+<p class="sub">Drop in a WhatsApp chat export and hand out the awards: the Chatterbox, the Ghost, the Night Owl and more. Read in your browser. The chat never leaves your device.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a chat export"><strong>Drop a WhatsApp chat .txt here</strong><span>WhatsApp: open the chat, menu, More, Export chat, Without media. Or click to choose.</span><input id="file" type="file" accept=".txt,text/plain" hidden></div>
+<div class="btns"><button id="sample">Try with a sample chat</button></div><div class="err" id="err" role="alert"></div>
+<div class="chk"><input id="hide" type="checkbox" checked><label for="hide">Hide real names (Person 1, Person 2...)</label></div>
+<p class="note">Awards need a few messages per person. A reply means a message from a different person within 30 minutes. A silence is a gap of 6 hours or more. This is for fun, so be kind when you post it, and check with the group first.</p>
+</section>
+<section><div class="preview" id="out">Your awards appear here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var msgs=[],canvas=null,txt='';
+var RA=/^‎?(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4}),? (\d{1,2})[:.](\d{2})(?::\d{2})?\s?([APap]\.?[Mm]\.?)? - ([^:]+): (.*)$/;
+var RI=/^‎?\[(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4}),? (\d{1,2})[:.](\d{2})(?::\d{2})?\s?([APap][Mm])?\] ([^:]+): (.*)$/;
+function parse(t){
+  var lines=t.replace(/\r/g,'').split('\n'),raw=[],cur=null,dayFirst=null;
+  lines.forEach(function(l){
+    var m=RA.exec(l)||RI.exec(l);
+    if(m){cur={a:+m[1],b:+m[2],y:+m[3],h:+m[4],mi:+m[5],ap:(m[6]||'').toLowerCase().replace(/\./g,''),n:m[7].trim(),x:m[8]};raw.push(cur);
+      if(+m[1]>12) dayFirst=true; else if(+m[2]>12&&dayFirst===null) dayFirst=false}
+    else if(cur&&l) cur.x+=' '+l;
+  });
+  if(dayFirst===null) dayFirst=false;
+  return raw.map(function(r){
+    var d=dayFirst?r.a:r.b,mo=dayFirst?r.b:r.a,y=r.y<100?2000+r.y:r.y,h=r.h;
+    if(r.ap==='pm'&&h<12) h+=12; if(r.ap==='am'&&h===12) h=0;
+    return {t:new Date(y,mo-1,d,h,r.mi),n:r.n,x:r.x};
+  }).filter(function(m){return !isNaN(m.t)}).sort(function(a,b){return a.t-b.t});
+}
+function median(a){if(!a.length) return 0;a=a.slice().sort(function(x,y){return x-y});return a[Math.floor(a.length/2)]}
+function words(s){return (s.match(/\S+/g)||[]).length}
+function load(t){
+  msgs=parse(t);
+  if(msgs.length<20){UI.err('Not enough messages found. Is this a WhatsApp export (.txt)?');return}
+  UI.err('');run();
+}
+function dur(ms){var m=Math.round(ms/6e4);return m<60?m+' min':(m/60).toFixed(1)+' h'}
+function run(){
+  if(msgs.length<20) return;
+  var S={},order=[];
+  msgs.forEach(function(m,i){
+    var s=S[m.n]; if(!s){s=S[m.n]={n:m.n,c:0,w:0,night:0,early:0,media:0,q:0,laugh:0,start:0,kill:0,rep:[]};order.push(m.n)}
+    s.c++;s.w+=words(m.x);var h=m.t.getHours();if(h<5)s.night++;else if(h<8)s.early++;
+    if(/<media omitted>|image omitted|video omitted|sticker omitted|\.jpg|\.jpeg/i.test(m.x)) s.media++;
+    if(m.x.indexOf('?')>=0) s.q++; if(/ha(ha)+|lol|lmao|\u{1F602}|\u{1F923}/iu.test(m.x)) s.laugh++;
+    var p=msgs[i-1];
+    if(!p||m.t-p.t>=6*36e5) s.start++;
+    if(p&&p.n!==m.n&&m.t-p.t<30*6e4) s.rep.push(m.t-p.t);
+    var nx=msgs[i+1]; if(!nx||nx.t-m.t>=6*36e5) s.kill++;
+  });
+  var min=Math.max(5,Math.min(20,Math.round(msgs.length*0.02))),P=order.map(function(n){return S[n]}).filter(function(s){return s.c>=min});
+  if(P.length<2){UI.err('Not enough active people to hand out awards.');return}
+  var hide=$('hide').checked,idx={};order.forEach(function(n,i){idx[n]=i+1});
+  function nm(s){return hide?'Person '+idx[s.n]:(s.n.length>16?s.n.slice(0,15)+'...':s.n)}
+  function best(f,asc){var b=null;P.forEach(function(s){var v=f(s);if(v==null||isNaN(v)) return;if(b===null||(asc?v<b.v:v>b.v)) b={s:s,v:v}});return b}
+  var AW=[
+   ['THE CHATTERBOX',best(function(s){return s.c}),function(v){return v.toLocaleString('en-US')+' messages'}],
+   ['THE ESSAYIST',best(function(s){return s.w/s.c}),function(v){return v.toFixed(1)+' words per message'}],
+   ['THE ONE-WORD WONDER',best(function(s){return s.w/s.c},true),function(v){return v.toFixed(1)+' words per message'}],
+   ['THE NIGHT OWL',best(function(s){return s.night/s.c}),function(v){return Math.round(v*100)+'% after midnight'}],
+   ['THE EARLY BIRD',best(function(s){return s.early/s.c}),function(v){return Math.round(v*100)+'% between 5 and 8 am'}],
+   ['THE STARTER',best(function(s){return s.start}),function(v){return v+' conversations opened'}],
+   ['THE SILENCER',best(function(s){return s.kill}),function(v){return v+' last words before silence'}],
+   ['THE PHOTOGRAPHER',best(function(s){return s.media}),function(v){return v+' photos and clips'}],
+   ['THE INTERROGATOR',best(function(s){return s.q/s.c}),function(v){return Math.round(v*100)+'% of messages ask something'}],
+   ['THE LAUGH TRACK',best(function(s){return s.laugh}),function(v){return v+' laughing messages'}],
+   ['THE FASTEST REPLY',best(function(s){return s.rep.length>=5?median(s.rep):null},true),function(v){return 'median '+dur(v)}],
+   ['THE GHOST',best(function(s){return s.rep.length>=5?median(s.rep):null}),function(v){return 'median '+dur(v)}]
+  ].filter(function(a){return a[1]&&(a[0]!=='THE PHOTOGRAPHER'||a[1].v>0)&&(a[0]!=='THE LAUGH TRACK'||a[1].v>0)});
+  var L=[{t:'c',l:'GROUP CHAT AWARDS',cls:'b big'},{t:'c',l:fmtDate(msgs[0].t)+' to '+fmtDate(msgs[msgs.length-1].t),cls:'m'},{t:'sep'},
+    {t:'r',l:'MESSAGES',r:msgs.length.toLocaleString('en-US')},{t:'r',l:'PEOPLE',r:String(order.length)},{t:'sep'}];
+  AW.forEach(function(a){L.push({t:'r',l:a[0],r:nm(a[1].s),cls:'b'},{t:'c',l:a[2](a[1].v),cls:'m'})});
+  L.push({t:'sep'},{t:'c',l:'No friends were harmed.',cls:'b'},{t:'c',l:'Made with Group Chat Awards',cls:'m'});
+  canvas=Card.receipt(L);Card.show($('out'),canvas,440);txt=Card.receiptText(L);$('png').disabled=$('copy').disabled=false;
+}
+function sample(){
+  var N=['Ana','Ben','Chloe','Dev','Eli'],r=mulberry(3),o=[],t=new Date(2026,0,3,9,0).getTime();
+  for(var i=0;i<900;i++){
+    t+=r()<0.06?(7+Math.floor(r()*10))*36e5:Math.floor(r()*r()*40)*6e4+30000;
+    var d=new Date(t),who=N[Math.floor(Math.pow(r(),1.5)*5)],h=d.getHours(),
+      txt=r()<0.1?'<Media omitted>':r()<0.2?'haha':r()<0.15?'wait what?':'ok see you there then maybe around '+(1+Math.floor(r()*11))+' or so';
+    var hh=h%12||12,ap=h<12?'AM':'PM';
+    o.push((d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2)+', '+hh+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap+' - '+who+': '+txt);
+  }
+  return o.join('\n');
+}
+UI.dropzone('drop','file',load);
+$('sample').addEventListener('click',function(){load(sample())});
+$('hide').addEventListener('input',run);
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'group-chat-awards.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>

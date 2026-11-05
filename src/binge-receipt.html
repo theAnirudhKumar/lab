@@ -1,0 +1,74 @@
+<!-- title: Binge Receipt | Your Netflix history as a receipt. -->
+<h1>Binge Receipt</h1>
+<p class="sub">Your Netflix history as a receipt: hours, top shows, your longest day and how much of it happened after midnight. Your file is read in this browser and goes nowhere.</p>
+<div class="grid">
+<section class="card">
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose ViewingActivity.csv"><strong>Drop ViewingActivity.csv here</strong><span>Netflix: Account, Security and Privacy, Download your personal information. Or click to choose.</span><input id="file" type="file" accept=".csv,text/csv" hidden></div>
+<div class="btns"><button id="sample">Try with sample data</button></div><div class="err" id="err" role="alert"></div>
+<label for="prof">Profile</label><select id="prof"><option value="">All profiles</option></select>
+<div class="chk"><input id="hide" type="checkbox"><label for="hide">Hide titles</label></div>
+<p class="note">Skips trailers and clips (supplemental video) and anything under one minute. Times are shown in your local time zone.</p>
+</section>
+<section><div class="preview" id="out">Your receipt appears here.</div><!--@ACTIONS--></section>
+</div>
+<!--@FOOT-->
+<script>
+/*@CARD*/
+var rows=[],canvas=null,txt='';
+function csv(t){
+  var out=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){var c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c==='"') q=true; else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n') i++; row.push(f);f=''; if(row.length>1||row[0]!=='') out.push(row); row=[] }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row)}
+  return out;
+}
+function load(t){
+  var r=csv(t); if(r.length<2){UI.err('That does not look like ViewingActivity.csv.');return}
+  var h=r[0].map(function(x){return x.trim().toLowerCase()}),ip=h.indexOf('profile name'),is=h.indexOf('start time'),id=h.indexOf('duration'),it=h.indexOf('title'),iv=h.indexOf('supplemental video type');
+  if(is<0||id<0||it<0){UI.err('Missing columns: need Start Time, Duration and Title.');return}
+  rows=[];var profs={};
+  for(var i=1;i<r.length;i++){var x=r[i]; if(x.length<=Math.max(is,id,it)) continue;
+    var dm=(x[id]||'').match(/^(\d+):(\d\d):(\d\d)$/); if(!dm) continue; var secs=+dm[1]*3600+ +dm[2]*60+ +dm[3];
+    if(secs<60||(iv>=0&&x[iv])) continue;
+    var d=new Date((x[is]||'').replace(' ','T')+'Z'); if(isNaN(d)) continue;
+    var p=ip>=0?x[ip]:''; profs[p]=1; rows.push({p:p,d:d,s:secs,t:(x[it]||'').split(':')[0].trim()});
+  }
+  if(!rows.length){UI.err('No viewing rows found.');return}
+  var sel=$('prof'); sel.textContent=''; var o=document.createElement('option');o.value='';o.textContent='All profiles';sel.appendChild(o);
+  Object.keys(profs).forEach(function(p){if(!p) return; var op=document.createElement('option');op.value=p;op.textContent=p;sel.appendChild(op)});
+  UI.err(''); run();
+}
+function run(){
+  var P=$('prof').value,R=rows.filter(function(x){return !P||x.p===P}),hide=$('hide').checked;
+  if(!R.length) return;
+  var tot=0,late=0,byDay={},byT={},cnt={},min=null,max=null;
+  R.forEach(function(x){tot+=x.s;var h=x.d.getHours(); if(h<5) late+=x.s; var dk=x.d.toDateString(); byDay[dk]=(byDay[dk]||0)+x.s; byT[x.t]=(byT[x.t]||0)+x.s; cnt[x.t]=(cnt[x.t]||0)+1; if(!min||x.d<min) min=x.d; if(!max||x.d>max) max=x.d});
+  var best=Object.keys(byDay).sort(function(a,b){return byDay[b]-byDay[a]})[0];
+  var top=Object.keys(byT).sort(function(a,b){return byT[b]-byT[a]}).slice(0,5);
+  var hrs=tot/3600,span=Math.max(1,Math.round((max-min)/DAY));
+  function f(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+  var L=[{t:'c',l:'BINGE RECEIPT',cls:'b big'},{t:'c',l:f(min)+' to '+f(max),cls:'m'},{t:'sep'},
+   {t:'r',l:'VIEWINGS',r:R.length.toLocaleString('en-US')},{t:'r',l:'HOURS WATCHED',r:Math.round(hrs).toLocaleString('en-US')},
+   {t:'r',l:'DAYS, NONSTOP',r:(hrs/24).toFixed(1)},{t:'r',l:'AVERAGE PER DAY',r:(hrs/span*60).toFixed(0)+' min'},
+   {t:'r',l:'LONGEST DAY',r:(byDay[best]/3600).toFixed(1)+' h'},{t:'r',l:'AFTER MIDNIGHT (0-5 AM)',r:Math.round(late/tot*100)+'%'},{t:'sep'},{t:'c',l:'TOP TITLES',cls:'b'}];
+  top.forEach(function(t,i){L.push({t:'r',l:hide?'Title '+(i+1):(t.length>24?t.slice(0,23)+'...':t),r:(byT[t]/3600).toFixed(0)+' h'})});
+  L.push({t:'sep'},{t:'r',l:'TOTAL',r:Math.round(hrs)+' h',cls:'b big'},{t:'sep'},{t:'c',l:'Worth it.',cls:'b'},{t:'c',l:'Made with Binge Receipt',cls:'m'});
+  canvas=Card.receipt(L);Card.show($('out'),canvas,440);txt=Card.receiptText(L);$('png').disabled=$('copy').disabled=false;
+}
+function sampleCsv(){
+  var T=['Stranger Things','The Crown','Bridgerton','Wednesday','Squid Game','Dark','Ozark','Money Heist'],o=['Profile Name,Start Time,Duration,Attributes,Title,Supplemental Video Type,Device Type,Bookmark,Latest Bookmark,Country'],t0=Date.now()-300*DAY;
+  for(var i=0;i<900;i++){var d=new Date(t0+i*(300*DAY/900)+(i%7)*3600e3*3),s=(i%11===0)?'':'';
+    var dur=Math.max(600,((i*37)%3000)+900),h=Math.floor(dur/3600),m=Math.floor(dur%3600/60),sc=dur%60,p=function(n){return String(n).padStart(2,'0')};
+    o.push('Sam,'+d.toISOString().replace('T',' ').slice(0,19)+','+p(h)+':'+p(m)+':'+p(sc)+',,"'+T[(i*7)%8]+': Season 1: Episode '+(i%8+1)+'",,Smart TV,00:10:00,00:10:00,US')}
+  return o.join('\n');
+}
+UI.dropzone('drop','file',load);
+$('sample').addEventListener('click',function(){load(sampleCsv())});
+['prof','hide'].forEach(function(id){$(id).addEventListener('input',run)});
+$('png').addEventListener('click',function(){if(canvas) Card.download(canvas,'binge-receipt.png')});
+$('copy').addEventListener('click',function(){Card.copy(txt,$('copy'))});
+</script>
